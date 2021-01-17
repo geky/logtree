@@ -37,6 +37,9 @@ class LogTree:
         lo, hi = float('-inf'), float('inf')
 
         while off >= 0:
+            if hasattr(self, 'iters'):
+                self.iters += 1
+
             node = self.nodes[off]
             # found key?
             # TODO can we base this off lo/hi?
@@ -56,11 +59,17 @@ class LogTree:
                         hi = altkey
                         nkey = altkey
                         noff = altoff
+                        # TODO hack
+                        #if key == altkey:
+                        #    noff = [o for k, o in node.alts if k == altkey][-1]
                         break
                     elif key >= altkey and altkey >= node.key:
                         lo = altkey
                         nkey = altkey
                         noff = altoff
+                        # TODO hack
+                        #if key == altkey:
+                        #    noff = [o for k, o in node.alts if k == altkey][-1]
                         break
 #                    elif key == altkey: # TODO wait this is messing with things
 #                        break
@@ -74,6 +83,8 @@ class LogTree:
             # TODO need this?
             #if not alts or nkey != alts[-1][0]:
             # TODO is there some room for optimizing redundant branches?
+            # TODO hmm
+            #if nkey > lo and nkey < hi:
             alts.append((nkey, off))
             off = noff
 
@@ -84,24 +95,26 @@ class LogTree:
                 #alts = [(alts[0][0], max(x for _, x in alts))]
                 pass
 
-            # rotate shenanigans?
-            nalts = []
-            i = 0
-            while i < len(alts):
-                if i < len(alts)-1 and (
-                        key > alts[i+1][0] and alts[i+1][0] > alts[i+0][0] and
-                        alts[i+1][1] > alts[i+0][1]):
-                    nalts.append(alts[i+1])
-                    i += 2
-                elif i < len(alts)-1 and (
-                        key < alts[i+1][0] and alts[i+1][0] < alts[i+0][0] and
-                        alts[i+1][1] > alts[i+0][1]):
-                    nalts.append(alts[i+1])
-                    i += 2
-                else:
-                    nalts.append(alts[i])
-                    i += 1
-            alts = nalts
+#            # rotate shenanigans?
+#            nalts = []
+#            i = 0
+#            while i < len(alts):
+#                if i < len(alts)-1 and (
+#                        key > alts[i+1][0] and alts[i+1][0] > alts[i+0][0] and
+#                        alts[i+1][1] > alts[i+0][1] and
+#                        random.randint(0, 1)):
+#                    nalts.append(alts[i+1])
+#                    i += 2
+#                elif i < len(alts)-1 and (
+#                        key < alts[i+1][0] and alts[i+1][0] < alts[i+0][0] and
+#                        alts[i+1][1] > alts[i+0][1] and
+#                        random.randint(0, 1)):
+#                    nalts.append(alts[i+1])
+#                    i += 2
+#                else:
+#                    nalts.append(alts[i])
+#                    i += 1
+#            alts = nalts
 
         # append
         self.nodes.append(LogTree.Node(key, value, alts=alts))
@@ -111,6 +124,9 @@ class LogTree:
         lo, hi = float('-inf'), float('inf')
 
         while off >= 0:
+            if hasattr(self, 'iters'):
+                self.iters += 1
+
             node = self.nodes[off]
             # found key?
             # TODO can we base this off lo/hi?
@@ -128,10 +144,12 @@ class LogTree:
             # build new alt-pointers
             for altkey, altoff in node.alts:
                 if altkey > lo and altkey < hi:
-#                    if key == altkey:
-#                        off = altoff
-#                        break
-                    if key <= altkey and altkey <= node.key:
+                    if key == altkey:
+                        off = altoff
+                        # TODO hack
+                        #off = [o for k, o in node.alts if k == altkey][-1]
+                        break
+                    elif key <= altkey and altkey <= node.key:
                         hi = altkey if altkey != key else hi # TODO hm
                         off = altoff
                         break
@@ -170,49 +188,41 @@ def main():
     print('2 = ', tree.lookup(2))
     print('-1 = ', tree.lookup(-1))
 
+    def test(input):
+        pass_ = True
+        tree = LogTree()
+        append_iters = []
+        lookup_iters = []
+        input = list(input)
+        for i in input:
+            tree.iters = 0
+            tree.append(i, repr(i))
+            append_iters.append(tree.iters)
+        for i in input:
+            tree.iters = 0
+            if tree.lookup(i) != repr(i):
+                if pass_ == True:
+                    print('could not find %s' % i)
+                pass_ = False
+            lookup_iters.append(tree.iters)
+        print('test %s' % ('passed' if pass_ else 'failed'))
+    #    if not pass_:
+    #        print(tree)
+    
+        print('height = %d' % tree.height())
+        print('max append iters = %d' % max(append_iters))
+        print('avg append iters = %d' % (sum(append_iters) / len(append_iters)))
+        print('max lookup iters = %d' % max(lookup_iters))
+        print('avg lookup iters = %d' % (sum(lookup_iters) / len(append_iters)))
+
     print('test in order')
-    pass_ = True
-    tree = LogTree()
-    for i in range(1000):
-        tree.append(i, repr(i))
-    for i in range(1000):
-        if tree.lookup(i) != repr(i):
-#            print('could not find %s' % i)
-            pass_ = False
-    print('test %s' % ('passed' if pass_ else 'failed'))
-#    if not pass_:
-#        print(tree)
-    print('height = %d' % tree.height())
-
+    test(range(1000))
     print('test in reverse order')
-    pass_ = True
-    tree = LogTree()
-    for i in reversed(range(1000)):
-        tree.append(i, repr(i))
-    for i in range(1000):
-        if tree.lookup(i) != repr(i):
-#            print('could not find %s' % i)
-            pass_ = False
-    print('test %s' % ('passed' if pass_ else 'failed'))
-#    if not pass_:
-#        print(tree)
-    print('height = %d' % tree.height())
-
+    test(reversed(range(1000)))
     print('test in random order')
-    pass_ = True
-    tree = LogTree()
-    is_ = list(range(1000))
-    random.shuffle(is_)
-    for i in is_:
-        tree.append(i, repr(i))
-    for i in range(1000):
-        if tree.lookup(i) != repr(i):
-#            print('could not find %s' % i)
-            pass_ = False
-    print('test %s' % ('passed' if pass_ else 'failed'))
-#    if not pass_:
-#        print(tree)
-    print('height = %d' % tree.height())
+    x = list(range(1000))
+    random.shuffle(x)
+    test(x)
 
 
 if __name__ == "__main__":
