@@ -35,6 +35,8 @@ class LogTree:
         alts = []
         off = len(self.nodes)-1
         lo, hi = float('-inf'), float('inf')
+        foundkey = None
+        foundoff = None
 
         while off >= 0:
             if hasattr(self, 'iters'):
@@ -44,7 +46,12 @@ class LogTree:
             # found key?
             # TODO can we base this off lo/hi?
             if node.key == key:
+                foundkey = node.key
+                foundoff = off
                 break
+
+            # TODO rename this :/
+            foundoff = off
 
 #            if key < node.key and node.key < hi:
 #                hi = node.key
@@ -55,25 +62,27 @@ class LogTree:
             nkey = node.key
             for altkey, altoff in node.alts:
                 if altkey > lo and altkey < hi:
-                    if key <= altkey and altkey <= node.key:
+                    if key < altkey and altkey <= node.key:
                         hi = altkey
                         nkey = altkey
                         noff = altoff
+                        alts.append((altkey, off))
                         # TODO hack
                         #if key == altkey:
                         #    noff = [o for k, o in node.alts if k == altkey][-1]
                         break
-                    elif key >= altkey and altkey >= node.key:
+                    elif key >= altkey and altkey > node.key:
                         lo = altkey
                         nkey = altkey
                         noff = altoff
+                        alts.append((altkey, off))
                         # TODO hack
                         #if key == altkey:
                         #    noff = [o for k, o in node.alts if k == altkey][-1]
                         break
 #                    elif key == altkey: # TODO wait this is messing with things
 #                        break
-                    elif key <= altkey:
+                    elif key < altkey:
                         hi = altkey
                         alts.append((altkey, altoff))
                     elif key >= altkey:
@@ -85,16 +94,20 @@ class LogTree:
             # TODO is there some room for optimizing redundant branches?
             # TODO hmm
             #if nkey > lo and nkey < hi:
-            alts.append((nkey, off))
+            #alts.append((nkey, off))
             off = noff
 
-            # remove random suffix? TODO this good? TODO answer is no
-            if len(alts) > 1:
-                #alts = alts[:random.randrange(len(alts))+1]
-                #alts = alts[:1]
-                #alts = [(alts[0][0], max(x for _, x in alts))]
-                pass
+        if foundoff is not None and self.nodes[foundoff].key != key:
+            alts.append((max(self.nodes[foundoff].key, key), foundoff))
 
+#            # remove random suffix? TODO this good? TODO answer is no
+#            if len(alts) > 1:
+#                #alts = alts[:random.randrange(len(alts))+1]
+#                #alts = alts[:1]
+#                #alts = [(alts[0][0], max(x for _, x in alts))]
+#                pass
+
+#           TODO oh, move this out of loop?
 #            # rotate shenanigans?
 #            nalts = []
 #            i = 0
@@ -115,6 +128,8 @@ class LogTree:
 #                    nalts.append(alts[i])
 #                    i += 1
 #            alts = nalts
+
+
 
         # append
         self.nodes.append(LogTree.Node(key, value, alts=alts))
@@ -144,17 +159,17 @@ class LogTree:
             # build new alt-pointers
             for altkey, altoff in node.alts:
                 if altkey > lo and altkey < hi:
-                    if key == altkey:
+#                    if key == altkey:
+#                        off = altoff
+#                        # TODO hack
+#                        #off = [o for k, o in node.alts if k == altkey][-1]
+#                        break
+                    if key < altkey and altkey <= node.key:
+                        hi = altkey #if altkey != key else hi # TODO hm
                         off = altoff
-                        # TODO hack
-                        #off = [o for k, o in node.alts if k == altkey][-1]
                         break
-                    elif key <= altkey and altkey <= node.key:
-                        hi = altkey if altkey != key else hi # TODO hm
-                        off = altoff
-                        break
-                    elif key >= altkey and altkey >= node.key:
-                        lo = altkey if altkey != key else lo # TODO hm
+                    elif key >= altkey and altkey > node.key:
+                        lo = altkey #  if altkey != key else lo # TODO hm
                         off = altoff
                         break
             else:
@@ -164,6 +179,15 @@ class LogTree:
         return max(len(node.alts) for node in self.nodes)
 
 def main():
+    tree = LogTree()
+    tree.append(1, 'a')
+    tree.append(2, 'b')
+    tree.append(3, 'c')
+    print(tree)
+    print('1 = ', tree.lookup(1))
+    print('2 = ', tree.lookup(2))
+    print('3 = ', tree.lookup(3))
+
     tree = LogTree()
     tree.append(3, 'a')
     tree.append(5, 'b')
@@ -194,15 +218,20 @@ def main():
         append_iters = []
         lookup_iters = []
         input = list(input)
+        baseline = {}
+        x = 0
         for i in input:
             tree.iters = 0
-            tree.append(i, repr(i))
+            tree.append(i, repr(x))
+            baseline[i] = repr(x)
+            x += 1
             append_iters.append(tree.iters)
         for i in input:
             tree.iters = 0
-            if tree.lookup(i) != repr(i):
+            if tree.lookup(i) != baseline.get(i):
                 if pass_ == True:
-                    print('could not find %s' % i)
+                    print('could not find %s (expected %s)' % (
+                        i, baseline.get(i)))
                 pass_ = False
             lookup_iters.append(tree.iters)
         print('test %s' % ('passed' if pass_ else 'failed'))
@@ -223,6 +252,16 @@ def main():
     x = list(range(1000))
     random.shuffle(x)
     test(x)
+    print('test in order overlapping')
+    test(it.chain(range(1000), range(1000)))
+    print('test in reverse order overlapping')
+    test(it.chain(reversed(range(1000)), reversed(range(1000))))
+    print('test in random order overlapping')
+    x = list(range(1000))
+    random.shuffle(x)
+    y = list(range(1000))
+    random.shuffle(y)
+    test(it.chain(x, y))
 
 
 if __name__ == "__main__":
