@@ -43,22 +43,38 @@ class LogTree:
             if node.key == key:
                 break
 
-            if key < node.key and node.key < hi:
-                hi = node.key
-            elif key > node.key and node.key > lo:
-                lo = node.key
+#            if key < node.key and node.key < hi:
+#                hi = node.key
+#            elif key > node.key and node.key > lo:
+#                lo = node.key
 
             noff = -1
+            nkey = node.key
             for altkey, altoff in node.alts:
                 if altkey > lo and altkey < hi:
                     if key < altkey and altkey < node.key:
+                        hi = altkey
+                        nkey = altkey
                         noff = altoff
                         break
                     elif key > altkey and altkey > node.key:
+                        lo = altkey
+                        nkey = altkey
                         noff = altoff
                         break
-                    else:
+                    elif key == altkey:
+                        break
+                    elif key < altkey:
+                        hi = altkey
                         alts.append((altkey, altoff))
+                    elif key > altkey:
+                        lo = altkey
+                        alts.append((altkey, altoff))
+
+            # TODO need this?
+            if not alts or nkey != alts[-1][0]:
+                alts.append((nkey, off))
+            off = noff
 
 #            # build new alt-pointers
 #            noff = -1
@@ -121,8 +137,6 @@ class LogTree:
 #            else:
 #            if not alts:
 
-            alts.append((node.key, off))
-            off = noff
 
         # append
         self.nodes.append(LogTree.Node(key, value, alts=alts))
