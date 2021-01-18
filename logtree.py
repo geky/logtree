@@ -2,6 +2,11 @@
 
 import random
 import itertools as it
+import collections as co
+
+# 32-bit bit reverse
+def brev(n):
+    return int(''.join(reversed('{:032b}'.format(n))), 2)
 
 class LogTree:
     class Node:
@@ -46,7 +51,9 @@ class LogTree:
                 break
 
             for altkey, altoff in node.alts:
-                if lo < altkey and altkey < hi:
+                if hasattr(self, 'iters2'):
+                    self.iters2 += 1
+                if altkey > lo and altkey < hi:
                     if key < altkey:
                         hi = altkey
                         if altkey <= node.key:
@@ -54,6 +61,7 @@ class LogTree:
                             off = altoff
                             break
                         else:
+                            #if random.randint(0, 1): # random rotation?
                             alts.append((altkey, altoff))
                     elif key >= altkey:
                         lo = altkey
@@ -62,44 +70,66 @@ class LogTree:
                             off = altoff
                             break
                         else:
+#                            if altkey == lo:
+#                                print('b', altkey)
+                            #if random.randint(0, 1): # random rotation?
                             alts.append((altkey, altoff))
             else:
                 # did not find key
                 alts.append((max(node.key, key), off))
                 break
 
-#        if off != -1 and self.nodes[off].key != key:
-#            alts.append((max(self.nodes[off].key, key), off))
+        # should not have duplicates
+        alt_uniq = co.defaultdict(lambda: 0)
+        for alt in alts:
+            alt_uniq[alt[0]] += 1
+        for alt in alts:
+            assert alt_uniq[alt[0]] == 1, "alts not uniqe!? %s" % alt
 
-#            # remove random suffix? TODO this good? TODO answer is no
-#            if len(alts) > 1:
-#                #alts = alts[:random.randrange(len(alts))+1]
-#                #alts = alts[:1]
-#                #alts = [(alts[0][0], max(x for _, x in alts))]
-#                pass
-
-#           TODO oh, move this out of loop?
-#            # rotate shenanigans?
-#            nalts = []
-#            i = 0
-#            while i < len(alts):
-#                if i < len(alts)-1 and (
-#                        key > alts[i+1][0] and alts[i+1][0] > alts[i+0][0] and
-#                        alts[i+1][1] > alts[i+0][1] and
-#                        random.randint(0, 1)):
-#                    nalts.append(alts[i+1])
-#                    i += 2
-#                elif i < len(alts)-1 and (
-#                        key < alts[i+1][0] and alts[i+1][0] < alts[i+0][0] and
-#                        alts[i+1][1] > alts[i+0][1] and
-#                        random.randint(0, 1)):
-#                    nalts.append(alts[i+1])
-#                    i += 2
-#                else:
+        # rotate shenanigans?
+        nalts = []
+        i = 0
+        while i < len(alts):
+            if (i < len(alts)-1 and
+                    key >= alts[i+1][0] and alts[i+1][0] >= alts[i+0][0] and
+                    alts[i+1][1] > alts[i+0][1] and
+                    brev(alts[i+1][1]) > brev(alts[i+0][1])):
+#                    random.randint(0, 1)):
+#                    True):
+#                if not (alts[i+1][1] > alts[i+0][1]):
+#                    print('>', 'huh', alts[i+0], alts[i+1])
 #                    nalts.append(alts[i])
 #                    i += 1
-#            alts = nalts
+#                else:
+#                    nalts.append(alts[i+1])
+#                    i += 2
+                nalts.append((alts[i+1][0], max(alts[i+0][1], alts[i+1][1])))
+                #nalts.append(max(alts[i+0], alts[i+1], key=lambda x: x[1]))
+                i += 2
 
+            elif (i < len(alts)-1 and
+                    key < alts[i+1][0] and alts[i+1][0] < alts[i+0][0] and
+                    # TODO why do we need this condition??
+                    alts[i+1][1] > alts[i+0][1] and
+                    brev(alts[i+1][1]) > brev(alts[i+0][1])):
+                    #random.randint(0, 1)):
+#                    True):
+#                if not (alts[i+1][1] > alts[i+0][1]):
+#                    print('<', 'huh', alts[i+0], alts[i+1])
+#                    nalts.append(alts[i])
+#                    i += 1
+#                else:
+#                    nalts.append(alts[i+1])
+#                    i += 2
+#                if not alts[i+1][1] > alts[i+0][1]:
+                    #print('%d:%d %d:%d' % (alts[i+0][0], alts[i+0][1], alts[i+1][0], alts[i+1][1]))
+                nalts.append((alts[i+1][0], max(alts[i+0][1], alts[i+1][1])))
+                i += 2
+            else:
+                nalts.append(alts[i])
+                i += 1
+
+        alts = nalts
 
 
         # append
@@ -119,7 +149,9 @@ class LogTree:
 
             # build new alt-pointers
             for altkey, altoff in node.alts:
-                if lo < altkey and altkey < hi:
+                if hasattr(self, 'iters2'):
+                    self.iters2 += 1
+                if altkey > lo and altkey < hi:
                     if key < altkey:
                         hi = altkey
                         if altkey <= node.key:
@@ -134,6 +166,7 @@ class LogTree:
                 return None
 
     def height(self):
+        #print(max(self.nodes, key=lambda n: len(n.alts)).alts)
         return max(len(node.alts) for node in self.nodes)
 
 def main():
@@ -141,10 +174,23 @@ def main():
     tree.append(1, 'a')
     tree.append(2, 'b')
     tree.append(3, 'c')
+    tree.append(4, 'd')
     print(tree)
     print('1 = ', tree.lookup(1))
     print('2 = ', tree.lookup(2))
     print('3 = ', tree.lookup(3))
+    print('4 = ', tree.lookup(4))
+
+    tree = LogTree()
+    tree.append(4, 'd')
+    tree.append(3, 'c')
+    tree.append(2, 'b')
+    tree.append(1, 'a')
+    print(tree)
+    print('4 = ', tree.lookup(4))
+    print('3 = ', tree.lookup(3))
+    print('2 = ', tree.lookup(2))
+    print('1 = ', tree.lookup(1))
 
     tree = LogTree()
     tree.append(3, 'a')
@@ -153,6 +199,7 @@ def main():
     tree.append(7, 'd')
     tree.append(2, 'd')
     print(tree)
+    print('3 = ', tree.lookup(3))
 
     tree = LogTree()
     tree.append(1, 'a')
@@ -174,33 +221,47 @@ def main():
         pass_ = True
         tree = LogTree()
         append_iters = []
+        append_iters2 = []
         lookup_iters = []
+        lookup_iters2 = []
         input = list(input)
         baseline = {}
         x = 0
         for i in input:
             tree.iters = 0
+            tree.iters2 = 0
             tree.append(i, repr(x))
             baseline[i] = repr(x)
             x += 1
             append_iters.append(tree.iters)
+            append_iters2.append(tree.iters2)
         for i in input:
             tree.iters = 0
+            tree.iters2 = 0
             if tree.lookup(i) != baseline.get(i):
                 if pass_ == True:
                     print('could not find %s (expected %s)' % (
                         i, baseline.get(i)))
                 pass_ = False
             lookup_iters.append(tree.iters)
+            lookup_iters2.append(tree.iters2)
         print('test %s' % ('passed' if pass_ else 'FAILED'))
     #    if not pass_:
     #        print(tree)
     
         print('height = %d' % tree.height())
-        print('max append iters = %d' % max(append_iters))
-        print('avg append iters = %d' % (sum(append_iters) / len(append_iters)))
-        print('max lookup iters = %d' % max(lookup_iters))
-        print('avg lookup iters = %d' % (sum(lookup_iters) / len(append_iters)))
+        print('max append iters  = %d' % max(append_iters))
+        print('avg append iters  = %d' % (
+            sum(append_iters) / len(append_iters)))
+        print('max append iters2 = %d' % max(append_iters2))
+        print('avg append iters2 = %d' % (
+            sum(append_iters2) / len(append_iters2)))
+        print('max lookup iters  = %d' % max(lookup_iters))
+        print('avg lookup iters  = %d' % (
+            sum(lookup_iters) / len(lookup_iters)))
+        print('max lookup iters2 = %d' % max(lookup_iters2))
+        print('avg lookup iters2 = %d' % (
+            sum(lookup_iters2) / len(lookup_iters2)))
 
     print('test in order')
     test(range(1000))
