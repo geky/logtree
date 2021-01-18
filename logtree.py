@@ -24,10 +24,22 @@ class LogTree:
         def __repr__(self):
             return 'LogTree.Node%s' % self
 
-    def __init__(self, nodes=[]):
+    def __init__(self, nodes=[], rotate_pred='brev'):
         self.nodes = []
         for k, v in nodes:
             self.append(k, v)
+
+        if rotate_pred == None or rotate_pred == False:
+            # never rotate
+            self.rotate_pred = lambda a, b: False
+        elif rotate_pred == True:
+            self.rotate_pred = lambda a, b: True
+        elif rotate_pred == 'random':
+            self.rotate_pred = lambda a, b: random.randint(0, 1)
+        elif rotate_pred == 'brev':
+            self.rotate_pred = lambda a, b: brev(a[1]) > brev(b[1])
+        else:
+            self.rotate_pred = rotate_pred
 
     def __str__(self):
         return '[%s]' % ', '.join(str(node) for node in self.nodes)
@@ -40,6 +52,22 @@ class LogTree:
         alts = []
         off = len(self.nodes)-1
         lo, hi = float('-inf'), float('inf')
+
+        # keep track of past alt to see if we should rotate
+        #
+        # Note we just access the alt end here, but we would
+        # actually need to keep the previous alt in RAM. Annoying
+        # but not a deal-breaker.
+        def appendalt(alt):
+            altkey, altoff = alt
+            # rotate?
+            if (alts and ((key >= altkey and altkey >= alts[-1][0]) or
+                    (key < altkey and altkey < alts[-1][0])) and
+                    altoff > alts[-1][1] and
+                    self.rotate_pred((altkey, altoff), alts[-1])):
+                alts.pop()
+
+            alts.append((altkey, altoff))
 
         while off >= 0:
             if hasattr(self, 'iters'):
@@ -57,26 +85,22 @@ class LogTree:
                     if key < altkey:
                         hi = altkey
                         if altkey <= node.key:
-                            alts.append((altkey, off))
+                            appendalt((altkey, off))
                             off = altoff
                             break
                         else:
-                            #if random.randint(0, 1): # random rotation?
-                            alts.append((altkey, altoff))
+                            appendalt((altkey, altoff))
                     elif key >= altkey:
                         lo = altkey
                         if altkey > node.key:
-                            alts.append((altkey, off))
+                            appendalt((altkey, off))
                             off = altoff
                             break
                         else:
-#                            if altkey == lo:
-#                                print('b', altkey)
-                            #if random.randint(0, 1): # random rotation?
-                            alts.append((altkey, altoff))
+                            appendalt((altkey, altoff))
             else:
                 # did not find key
-                alts.append((max(node.key, key), off))
+                appendalt((max(node.key, key), off))
                 break
 
         # should not have duplicates
@@ -85,52 +109,6 @@ class LogTree:
             alt_uniq[alt[0]] += 1
         for alt in alts:
             assert alt_uniq[alt[0]] == 1, "alts not uniqe!? %s" % alt
-
-        # rotate shenanigans?
-        nalts = []
-        i = 0
-        while i < len(alts):
-            if (i < len(alts)-1 and
-                    key >= alts[i+1][0] and alts[i+1][0] >= alts[i+0][0] and
-                    alts[i+1][1] > alts[i+0][1] and
-                    brev(alts[i+1][1]) > brev(alts[i+0][1])):
-#                    random.randint(0, 1)):
-#                    True):
-#                if not (alts[i+1][1] > alts[i+0][1]):
-#                    print('>', 'huh', alts[i+0], alts[i+1])
-#                    nalts.append(alts[i])
-#                    i += 1
-#                else:
-#                    nalts.append(alts[i+1])
-#                    i += 2
-                nalts.append((alts[i+1][0], max(alts[i+0][1], alts[i+1][1])))
-                #nalts.append(max(alts[i+0], alts[i+1], key=lambda x: x[1]))
-                i += 2
-
-            elif (i < len(alts)-1 and
-                    key < alts[i+1][0] and alts[i+1][0] < alts[i+0][0] and
-                    # TODO why do we need this condition??
-                    alts[i+1][1] > alts[i+0][1] and
-                    brev(alts[i+1][1]) > brev(alts[i+0][1])):
-                    #random.randint(0, 1)):
-#                    True):
-#                if not (alts[i+1][1] > alts[i+0][1]):
-#                    print('<', 'huh', alts[i+0], alts[i+1])
-#                    nalts.append(alts[i])
-#                    i += 1
-#                else:
-#                    nalts.append(alts[i+1])
-#                    i += 2
-#                if not alts[i+1][1] > alts[i+0][1]:
-                    #print('%d:%d %d:%d' % (alts[i+0][0], alts[i+0][1], alts[i+1][0], alts[i+1][1]))
-                nalts.append((alts[i+1][0], max(alts[i+0][1], alts[i+1][1])))
-                i += 2
-            else:
-                nalts.append(alts[i])
-                i += 1
-
-        alts = nalts
-
 
         # append
         self.nodes.append(LogTree.Node(key, value, alts=alts))
@@ -166,7 +144,6 @@ class LogTree:
                 return None
 
     def height(self):
-        #print(max(self.nodes, key=lambda n: len(n.alts)).alts)
         return max(len(node.alts) for node in self.nodes)
 
 def main():
