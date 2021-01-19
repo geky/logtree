@@ -58,16 +58,26 @@ class LogTree:
         # Note we just access the alt end here, but we would
         # actually need to keep the previous alt in RAM. Annoying
         # but not a deal-breaker.
+        prevaltkey = None
+        prevaltoff = None
         def appendalt(alt):
             altkey, altoff = alt
             # rotate?
-            if (alts and ((key >= altkey and altkey >= alts[-1][0]) or
+            nonlocal prevaltkey
+            nonlocal prevaltoff
+            if (prevaltkey and (
+                    (key >= altkey and altkey >= alts[-1][0]) or
                     (key < altkey and altkey < alts[-1][0])) and
-                    altoff > alts[-1][1] and
-                    self.rotate_pred((altkey, altoff), alts[-1])):
+                    altoff > prevaltoff and
+                    self.rotate_pred((altkey, altoff),
+                        (prevaltkey, prevaltoff))):
                 alts.pop()
+                prevaltkey = None
+                prevaltoff = None
 
             alts.append((altkey, altoff))
+            prevaltkey = altkey
+            prevaltoff = altoff
 
         while off >= 0:
             if hasattr(self, 'iters'):
@@ -103,12 +113,12 @@ class LogTree:
                 appendalt((max(node.key, key), off))
                 break
 
-        # should not have duplicates
-        alt_uniq = co.defaultdict(lambda: 0)
-        for alt in alts:
-            alt_uniq[alt[0]] += 1
-        for alt in alts:
-            assert alt_uniq[alt[0]] == 1, "alts not uniqe!? %s" % alt
+#        # should not have duplicates
+#        alt_uniq = co.defaultdict(lambda: 0)
+#        for alt in alts:
+#            alt_uniq[alt[0]] += 1
+#        for alt in alts:
+#            assert alt_uniq[alt[0]] == 1, "alts not uniqe!? %s" % alt
 
         # append
         self.nodes.append(LogTree.Node(key, value, alts=alts))
