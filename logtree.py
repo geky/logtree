@@ -135,7 +135,6 @@ class LogTree:
             if node.key == key:
                 return node.value
 
-            # build new alt-pointers
             for altkey, altoff in node.alts:
                 if hasattr(self, 'iters2'):
                     self.iters2 += 1
@@ -153,6 +152,39 @@ class LogTree:
             else:
                 return None
 
+    def traverse(self):
+        # traversal is like lookup, but we keep track of
+        # hi, and use that for our next lookup, convenient
+        # that we already track this
+        prev = float('-inf')
+        while prev != float('inf'):
+            off = len(self.nodes)-1
+            lo, hi = float('-inf'), float('inf')
+
+            while off >= 0:
+                if hasattr(self, 'iters'):
+                    self.iters += 1
+
+                node = self.nodes[off]
+                for altkey, altoff in node.alts:
+                    if hasattr(self, 'iters2'):
+                        self.iters2 += 1
+                    if altkey > lo and altkey < hi:
+                        if prev < altkey:
+                            hi = altkey
+                            if altkey <= node.key:
+                                off = altoff
+                                break
+                        elif prev >= altkey:
+                            lo = altkey
+                            if altkey > node.key:
+                                off = altoff
+                                break
+                else:
+                    prev = hi
+                    yield (node.key, node.value)
+                    break
+
     def height(self):
         return max(len(node.alts) for node in self.nodes)
 
@@ -167,6 +199,7 @@ def main():
     print('2 = ', tree.lookup(2))
     print('3 = ', tree.lookup(3))
     print('4 = ', tree.lookup(4))
+    print('traverse = ', list(tree.traverse()))
 
     tree = LogTree()
     tree.append(4, 'd')
@@ -178,6 +211,7 @@ def main():
     print('3 = ', tree.lookup(3))
     print('2 = ', tree.lookup(2))
     print('1 = ', tree.lookup(1))
+    print('traverse = ', list(tree.traverse()))
 
     tree = LogTree()
     tree.append(3, 'a')
@@ -187,6 +221,7 @@ def main():
     tree.append(2, 'd')
     print(tree)
     print('3 = ', tree.lookup(3))
+    print('traverse = ', list(tree.traverse()))
 
     tree = LogTree()
     tree.append(1, 'a')
@@ -203,6 +238,7 @@ def main():
     print('5 = ', tree.lookup(5))
     print('2 = ', tree.lookup(2))
     print('-1 = ', tree.lookup(-1))
+    print('traverse = ', list(tree.traverse()))
 
     def test(input):
         pass_ = True
