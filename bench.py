@@ -21,11 +21,11 @@ def order_in_order_then_reversed(n, i=0):
     if i == 0:
         return order_in_order(n)
     else:
-        return order_in_reversed(n)
+        return order_reversed(n)
 
 def order_reversed_then_in_order(n, i=0):
     if i == 0:
-        return order_in_reversed(n)
+        return order_reversed(n)
     else:
         return order_in_order(n)
 
@@ -42,10 +42,10 @@ def main(case, order, path, N=10000, step=10):
     step = int(step)
     with open(path, 'a') as f:
         w = csv.writer(f)
-        w.writerow(['case', 'n',
-            'max_iters', 'avg_iters',
-            'max_iters2', 'avg_iters2',
-            'height'])
+        w.writerow(['case', 'order', 'n',
+            'avg_iters', 'min_iters', 'max_iters',
+            'avg_iters2', 'min_iters2', 'max_iters2',
+            'avg_height', 'min_height', 'max_height'])
 
         for n in range(step, N, step):
             print("running %s + %s for n=%r" % (case, order, n))
@@ -61,46 +61,14 @@ def main(case, order, path, N=10000, step=10):
                     iters.append(tree.iters)
                     iters2.append(tree.iters2)
                     baseline[i] = repr(i)
-
-                max_iters = max(iters)
-                avg_iters = sum(iters)/len(iters)
-                max_iters2 = max(iters2)
-                avg_iters2 = sum(iters2)/len(iters2)
-                height = tree.height()
+                heights = list(tree.heights())
 
                 for i in ORDERS[order](n):
                     if tree.lookup(i) != baseline.get(i):
                         print('failed %s + %s for n=%r, could not find %r' % (
                             case, order, n, i))
                         sys.exit(1)
-            elif case == 'updates':
-                baseline = {}
-                iters = []
-                iters2 = []
-                tree = LogTree()
-                for i in ORDERS[order](n):
-                    tree.append(i, 'bad')
-                    baseline[i] = 'bad'
 
-                for i in ORDERS[order](n):
-                    tree.iters = 0
-                    tree.iters2 = 0
-                    tree.append(i, repr(i))
-                    iters.append(tree.iters)
-                    iters2.append(tree.iters2)
-                    baseline[i] = repr(i)
-
-                max_iters = max(iters)
-                avg_iters = sum(iters)/len(iters)
-                max_iters2 = max(iters2)
-                avg_iters2 = sum(iters2)/len(iters2)
-                height = tree.height()
-
-                for i in ORDERS[order](n):
-                    if tree.lookup(i) != baseline.get(i):
-                        print('failed %s + %s for n=%r, could not find %r' % (
-                            case, order, n, i))
-                        sys.exit(1)
             elif case == 'lookups':
                 baseline = {}
                 iters = []
@@ -120,12 +88,8 @@ def main(case, order, path, N=10000, step=10):
                         print('failed %s + %s for n=%r, could not find %r' % (
                             case, order, n, i))
                         sys.exit(1)
+                heights = list(tree.heights())
 
-                max_iters = max(iters)
-                avg_iters = sum(iters)/len(iters)
-                max_iters2 = max(iters2)
-                avg_iters2 = sum(iters2)/len(iters2)
-                height = tree.height()
             elif case == 'traversal':
                 baseline = {}
                 iters = []
@@ -144,6 +108,7 @@ def main(case, order, path, N=10000, step=10):
                     iters2.append(tree.iters2)
                     tree.iters = 0
                     tree.iters2 = 0
+                heights = list(tree.heights())
 
                 for k, v in traversal:
                     if v != baseline.get(k):
@@ -151,33 +116,47 @@ def main(case, order, path, N=10000, step=10):
                             case, order, n, k))
                         sys.exit(1)
 
-                max_iters = max(iters)
-                avg_iters = sum(iters)/len(iters)
-                max_iters2 = max(iters2)
-                avg_iters2 = sum(iters2)/len(iters2)
-                height = tree.height()
+            elif case == 'updates':
+                baseline = {}
+                iters = []
+                iters2 = []
+                tree = LogTree()
+                for i in ORDERS[order](n, 0):
+                    tree.append(i, 'bad')
+                    baseline[i] = 'bad'
+
+                for i in ORDERS[order](n, 1):
+                    tree.iters = 0
+                    tree.iters2 = 0
+                    tree.append(i, repr(i))
+                    iters.append(tree.iters)
+                    iters2.append(tree.iters2)
+                    baseline[i] = repr(i)
+                heights = list(tree.heights())
+
+                for i in ORDERS[order](n):
+                    if tree.lookup(i) != baseline.get(i):
+                        print('failed %s + %s for n=%r, could not find %r' % (
+                            case, order, n, i))
+                        sys.exit(1)
+
             elif case == 'removes':
                 baseline = {}
                 iters = []
                 iters2 = []
                 tree = LogTree()
-                for i in ORDERS[order](n):
+                for i in ORDERS[order](n, 0):
                     tree.append(i, 'bad')
                     baseline[i] = 'bad'
 
-                for i in ORDERS[order](n):
+                for i in ORDERS[order](n, 1):
                     tree.iters = 0
                     tree.iters2 = 0
                     tree.remove(i)
                     iters.append(tree.iters)
                     iters2.append(tree.iters2)
                     del baseline[i]
-
-                max_iters = max(iters)
-                avg_iters = sum(iters)/len(iters)
-                max_iters2 = max(iters2)
-                avg_iters2 = sum(iters2)/len(iters2)
-                height = tree.height()
+                heights = list(tree.heights())
 
                 for i in ORDERS[order](n):
                     if tree.lookup(i) != baseline.get(i):
@@ -194,9 +173,9 @@ def main(case, order, path, N=10000, step=10):
                 sys.exit(1)
 
             w.writerow([case, order, n,
-                max_iters, avg_iters,
-                max_iters2, avg_iters2,
-                height])
+                sum(iters)/len(iters), min(iters), max(iters),
+                sum(iters2)/len(iters2), min(iters2), max(iters2),
+                sum(heights)/len(heights), min(heights), max(heights)])
             f.flush()
 
 if __name__ == "__main__":

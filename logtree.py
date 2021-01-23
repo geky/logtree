@@ -10,13 +10,15 @@ def brev(n):
 
 class LogTree:
     class Node:
-        def __init__(self, key, value, alts=[]):
+        def __init__(self, key, value, type=None, alts=[]):
             self.key = key
             self.value = value
+            self.type = type
             self.alts = alts
 
         def __str__(self):
-            return '(%r: %r%s)' % (
+            return '%s(%r: %r%s)' % (
+                self.type.title() if self.type else '',
                 self.key, self.value,
                 '; %s' % ','.join('%s:%s' % (k, v) for (k, v) in self.alts)
                     if self.alts else '')
@@ -47,9 +49,9 @@ class LogTree:
     def __repr__(self):
         return 'LogTree%s' % self
 
-    def append(self, key, value, omit=None):
+    def append(self, key, value, type=None):
         if not self.nodes:
-            self.nodes.append(LogTree.Node(key, value, alts=[]))
+            self.nodes.append(LogTree.Node(key, value, type=type, alts=[]))
             return
 
         # build alts
@@ -64,12 +66,6 @@ class LogTree:
         prevaltoff = None
         def appendalt(alt):
             altkey, altoff = alt
-
-            # skip omit keys, used for deletes, note requires care
-            # to not corrupt tree!
-            if altoff == omit:
-                #print('omitting', altkey, altoff)
-                return
 
             # rotate?
             nonlocal prevaltkey
@@ -144,7 +140,7 @@ class LogTree:
             prevwasdeleted = node.value is None
 
         # append
-        self.nodes.append(LogTree.Node(key, value, alts=alts))
+        self.nodes.append(LogTree.Node(key, value, type=type, alts=alts))
 
     def lookup(self, key, givenode=False):
         if not self.nodes:
@@ -232,68 +228,17 @@ class LogTree:
         # which gets complicated. Oh and we avoid the can't-delete-root
         # issue this way.
         self.append(key, None)
-        
-    def remove2(self, key):
-        # TODO this... doesn't work?
-#        print('removing', key, self)
-#        # Note that here we just copy the sibling of our deleted
-#        # node, in practice we probably want to use indirection to
-#        # avoid a copy... Maybe? Hmm, maybe both are worth benchmarking
-#        # when implemented
-#
-#        # first find our sibling
-#        # TODO can this be deduplicated?
-#        node = self.lookup(key, givenode=True)
-#        if not node:
-#            return False
-#
-#        sibling = None
-#        off = len(self.nodes)-1
-#        lo, hi = float('-inf'), float('inf')
-#        while True:
-#            if hasattr(self, 'iters'):
-#                self.iters += 1
-#
-#            node = self.nodes[off]
-#            for altkey, altoff in node.alts:
-#                if hasattr(self, 'iters2'):
-#                    self.iters2 += 1
-#                if altkey > lo and altkey < hi:
-#                    if key < altkey:
-#                        hi = altkey
-#                        if altkey <= node.key:
-#                            sibling = (node.key, off)
-#                            off = altoff
-#                            break
-#                        else:
-#                            sibling = (altkey, altoff)
-#                    elif key >= altkey:
-#                        lo = altkey
-#                        if altkey > node.key:
-#                            sibling = (node.key, off)
-#                            off = altoff
-#                            break
-#                        else:
-#                            sibling = (altkey, altoff)
-#            else:
-#                if node.key != key:
-#                    # key not in tree?
-#                    return False
-#                break
-#
-#        # can't delete last node in the tree
-#        assert sibling
-#
-#        # copy over sibling, removing our key from the tree
-#        # TODO can this be deduplicated more cleanly?
-#        #print('removing', key, off, 'via', sibling[0], sibling[1])
-#        # TODO can we search directly for sibling?
-#        self.append(self.nodes[sibling[1]].key, self.nodes[sibling[1]].value, omit=off)
-#        return True
-        pass
+
+    def create(self, key, value):
+        # let append do most of the work
+        self.append(key, value, type='create')
 
     def height(self):
         return max(len(node.alts) for node in self.nodes)
+
+    def heights(self):
+        for node in self.nodes:
+            yield len(node.alts)
 
 def main():
     tree = LogTree()
@@ -367,71 +312,112 @@ def main():
     print('-1 = ', tree.lookup(-1))
     print('traverse = ', list(tree.traverse()))
 
-    def test(input):
-        pass_ = True
-        tree = LogTree()
-        append_iters = []
-        append_iters2 = []
-        lookup_iters = []
-        lookup_iters2 = []
-        input = list(input)
-        baseline = {}
-        x = 0
-        for i in input:
-            tree.iters = 0
-            tree.iters2 = 0
-            tree.append(i, repr(x))
-            baseline[i] = repr(x)
-            x += 1
-            append_iters.append(tree.iters)
-            append_iters2.append(tree.iters2)
-        for i in input:
-            tree.iters = 0
-            tree.iters2 = 0
-            if tree.lookup(i) != baseline.get(i):
-                if pass_ == True:
-                    print('could not find %s (expected %s)' % (
-                        i, baseline.get(i)))
-                pass_ = False
-            lookup_iters.append(tree.iters)
-            lookup_iters2.append(tree.iters2)
-        print('test %s' % ('passed' if pass_ else 'FAILED'))
-    #    if not pass_:
-    #        print(tree)
-    
-        print('height = %d' % tree.height())
-        print('max append iters  = %d' % max(append_iters))
-        print('avg append iters  = %d' % (
-            sum(append_iters) / len(append_iters)))
-        print('max append iters2 = %d' % max(append_iters2))
-        print('avg append iters2 = %d' % (
-            sum(append_iters2) / len(append_iters2)))
-        print('max lookup iters  = %d' % max(lookup_iters))
-        print('avg lookup iters  = %d' % (
-            sum(lookup_iters) / len(lookup_iters)))
-        print('max lookup iters2 = %d' % max(lookup_iters2))
-        print('avg lookup iters2 = %d' % (
-            sum(lookup_iters2) / len(lookup_iters2)))
+    print("testing...")
+    for n in [10, 100, 1000]:
+        for case in ['appends', 'updates', 'removes']:
+            for order in ['in_order', 'reversed', 'random']:
+                if order == 'in_order':
+                    xs = list(range(n))
+                    ys = xs
+                elif order == 'reversed':
+                    xs = list(reversed(range(n)))
+                    ys = xs
+                elif order == 'random':
+                    xs = list(range(n))
+                    random.shuffle(xs)
+                    ys = list(range(n))
+                    random.shuffle(ys)
 
-    print('test in order')
-    test(range(1000))
-    print('test in reverse order')
-    test(reversed(range(1000)))
-    print('test in random order')
-    x = list(range(1000))
-    random.shuffle(x)
-    test(x)
-    print('test in order overlapping')
-    test(it.chain(range(1000), range(1000)))
-    print('test in reverse order overlapping')
-    test(it.chain(reversed(range(1000)), reversed(range(1000))))
-    print('test in random order overlapping')
-    x = list(range(1000))
-    random.shuffle(x)
-    y = list(range(1000))
-    random.shuffle(y)
-    test(it.chain(x, y))
+                if case == 'appends':
+                    tree = LogTree()
+                    baseline = {}
+                    for x in xs:
+                        # testing appends
+                        tree.append(x, repr(x))
+                        baseline[x] = repr(x)
+                    for x in xs:
+                        # testing lookups
+                        assert tree.lookup(x) == baseline.get(x), (
+                            "test %s %s %s FAILED\n"
+                            "tree.lookup(%s) => %s\n"
+                            "baseline[%s] => %s" % (
+                                case, order, n,
+                                x, tree.lookup(x),
+                                x, baseline.get(x)))
+                    # testing traversal
+                    traversal = list(tree.traverse())
+                    baseline_traversal = sorted(baseline.items())
+                    assert traversal == baseline_traversal, (
+                            "test %s %s %s FAILED\n"
+                            "tree.traversal() => %s\n"
+                            "sorted(baseline) => %s" % (
+                                case, order, n,
+                                traversal,
+                                baseline_traversal))
 
+                elif case == 'updates':
+                    tree = LogTree()
+                    baseline = {}
+                    for x in xs:
+                        # testing appends
+                        tree.append(x, 'bad')
+                        baseline[x] = 'bad'
+                    for y in ys:
+                        # testing updates
+                        tree.append(y, repr(y))
+                        baseline[y] = repr(y)
+                    for x in xs:
+                        # testing lookups
+                        assert tree.lookup(x) == baseline.get(x), (
+                            "test %s %s %s FAILED\n"
+                            "tree.lookup(%s) => %s\n"
+                            "baseline[%s] => %s" % (
+                                case, order, n,
+                                x, tree.lookup(x),
+                                x, baseline.get(x)))
+                    # testing traversal
+                    traversal = list(tree.traverse())
+                    baseline_traversal = sorted(baseline.items())
+                    assert traversal == baseline_traversal, (
+                            "test %s %s %s FAILED\n"
+                            "tree.traversal() => %s\n"
+                            "sorted(baseline) => %s" % (
+                                case, order, n,
+                                traversal,
+                                baseline_traversal))
+
+                elif case == 'removes':
+                    tree = LogTree()
+                    baseline = {}
+                    for x in xs:
+                        # testing appends
+                        tree.append(x, 'bad')
+                        baseline[x] = 'bad'
+                    for y in ys:
+                        # testing removes
+                        tree.remove(y)
+                        del baseline[y]
+                    for x in xs:
+                        # testing lookups
+                        assert tree.lookup(x) == baseline.get(x), (
+                            "test %s %s %s FAILED\n"
+                            "tree.lookup(%s) => %s\n"
+                            "baseline.get(%s) => %s" % (
+                                case, order, n,
+                                x, tree.lookup(x),
+                                x, baseline.get(x)))
+                    # testing traversal
+                    traversal = list(tree.traverse())
+                    baseline_traversal = sorted(baseline.items())
+                    assert traversal == baseline_traversal, (
+                            "test %s %s %s FAILED\n"
+                            "tree.traversal() => %s\n"
+                            "sorted(baseline) => %s" % (
+                                case, order, n,
+                                traversal,
+                                baseline_traversal))
+
+    print('tests passed!')
 
 if __name__ == "__main__":
     import sys

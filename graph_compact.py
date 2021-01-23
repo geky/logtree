@@ -22,9 +22,9 @@ ORDERS = [
     'reversed_then_in_order',
 ]
 FIELDS = [
-    'max_iters', 'avg_iters',
-    'max_iters2', 'avg_iters2',
-    'max_height', 'avg_height',
+    'iters',
+    'iters2',
+    'height',
 ]
 
 # seaborn color palette
@@ -39,6 +39,8 @@ def main(results, output):
         matplotlib.rc('axes', titlesize='medium', labelsize='medium')
         matplotlib.rc('xtick', labelsize='small')
         matplotlib.rc('ytick', labelsize='small')
+        matplotlib.rc('axes', prop_cycle=matplotlib.style
+            .library['seaborn-deep']['axes.prop_cycle'])
 
         np.random.seed(map(ord, "hello"))
 
@@ -56,12 +58,20 @@ def main(results, output):
                 ax.set_title(field)
 
                 for i, order in enumerate(ORDERS):
-                    ax.plot(
-                        [int(r['n']) for r in results
-                            if r['case'] == case and r['order'] == order],
-                        [float(r[field]) for r in results
-                            if r['case'] == case and r['order'] == order],
-                        color=COLORS[i], alpha=0.75, label=order)
+                    ns = [int(r['n']) for r in results
+                        if r['case'] == case and r['order'] == order]
+                    avgs = [float(r['avg_'+field]) for r in results
+                        if r['case'] == case and r['order'] == order]
+#                    mins = [float(r['min_'+field]) for r in results
+#                        if r['case'] == case and r['order'] == order]
+                    maxs = [float(r['max_'+field]) for r in results
+                        if r['case'] == case and r['order'] == order]
+#                    ax.fill_between(ns, avgs, maxs, step='mid',
+#                        color=COLORS[i], alpha=0.1)
+                    #ax.plot(ns, mins, color=COLORS[i], alpha=0.75)
+                    ax.plot(ns, maxs, color=COLORS[i], alpha=0.75,
+                        label=order + ' (max, avg)')
+                    ax.plot(ns, avgs, color=COLORS[i], alpha=0.25)
 
                 #ax.legend(loc='lower right', fontsize='x-small')
                 if x == len(CASES)-1:
