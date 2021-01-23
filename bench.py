@@ -6,21 +6,35 @@ import random
 import itertools as it
 import sys
 
-def in_order_n(n):
+def order_in_order(n, i=0):
     return range(n)
 
-def reversed_n(n):
+def order_reversed(n, i=0):
     return reversed(range(n))
 
-def random_n(n):
+def order_random(n, i=0):
     x = list(range(n))
     random.shuffle(x)
     return x
 
+def order_in_order_then_reversed(n, i=0):
+    if i == 0:
+        return order_in_order(n)
+    else:
+        return order_in_reversed(n)
+
+def order_reversed_then_in_order(n, i=0):
+    if i == 0:
+        return order_in_reversed(n)
+    else:
+        return order_in_order(n)
+
 ORDERS = {
-    'in_order': in_order_n,
-    'reversed': reversed_n,
-    'random':   random_n,
+    'random':                   order_random,
+    'in_order':                 order_in_order,
+    'reversed':                 order_reversed,
+    'in_order_then_reversed':   order_in_order_then_reversed,
+    'reversed_then_in_order':   order_reversed_then_in_order,
 }
 
 def main(case, order, path, N=10000, step=10):
@@ -123,9 +137,13 @@ def main(case, order, path, N=10000, step=10):
 
                 tree.iters = 0
                 tree.iters2 = 0
-                traversal = list(tree.traverse())
-                iters.append(tree.iters)
-                iters2.append(tree.iters2)
+                traversal = []
+                for k, v in tree.traverse():
+                    traversal.append((k, v))
+                    iters.append(tree.iters)
+                    iters2.append(tree.iters2)
+                    tree.iters = 0
+                    tree.iters2 = 0
 
                 for k, v in traversal:
                     if v != baseline.get(k):
@@ -138,6 +156,39 @@ def main(case, order, path, N=10000, step=10):
                 max_iters2 = max(iters2)
                 avg_iters2 = sum(iters2)/len(iters2)
                 height = tree.height()
+            elif case == 'removes':
+                baseline = {}
+                iters = []
+                iters2 = []
+                tree = LogTree()
+                for i in ORDERS[order](n):
+                    tree.append(i, 'bad')
+                    baseline[i] = 'bad'
+
+                for i in ORDERS[order](n):
+                    tree.iters = 0
+                    tree.iters2 = 0
+                    tree.remove(i)
+                    iters.append(tree.iters)
+                    iters2.append(tree.iters2)
+                    del baseline[i]
+
+                max_iters = max(iters)
+                avg_iters = sum(iters)/len(iters)
+                max_iters2 = max(iters2)
+                avg_iters2 = sum(iters2)/len(iters2)
+                height = tree.height()
+
+                for i in ORDERS[order](n):
+                    if tree.lookup(i) != baseline.get(i):
+                        print('failed %s + %s for n=%r, found %r' % (
+                            case, order, n, i))
+                        sys.exit(1)
+#                    traversal = list(tree.traverse())
+#                    if len(traversal) != 0:
+#                        print('failed %s + %s for n=%r, traversal %r' % (
+#                            case, order, n, traversal))
+#                        sys.exit(1)
             else:
                 print("unknown case %r?" % case)
                 sys.exit(1)

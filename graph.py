@@ -11,15 +11,21 @@ CASES = [
     'appends',
     'updates',
     'lookups',
-    'traversal']
+    'traversal',
+    'removes',
+]
 ORDERS = [
     'in_order',
     'reversed',
-    'random']
+    'random',
+#    'in_order_then_reversed',
+#    'reversed_then_in_order',
+]
 FIELDS = [
     'max_iters', 'avg_iters',
     'max_iters2', 'avg_iters2',
-    'height']
+    'height',
+]
 
 def main(results, output):
     with open(results) as f:

@@ -47,11 +47,13 @@ class LogTree:
     def __repr__(self):
         return 'LogTree%s' % self
 
-    def append(self, key, value):
+    def append(self, key, value, omit=None):
+        if not self.nodes:
+            self.nodes.append(LogTree.Node(key, value, alts=[]))
+            return
+
         # build alts
         alts = []
-        off = len(self.nodes)-1
-        lo, hi = float('-inf'), float('inf')
 
         # keep track of past alt to see if we should rotate
         #
@@ -62,6 +64,13 @@ class LogTree:
         prevaltoff = None
         def appendalt(alt):
             altkey, altoff = alt
+
+            # skip omit keys, used for deletes, note requires care
+            # to not corrupt tree!
+            if altoff == omit:
+                #print('omitting', altkey, altoff)
+                return
+
             # rotate?
             nonlocal prevaltkey
             nonlocal prevaltoff
@@ -79,13 +88,19 @@ class LogTree:
             prevaltkey = altkey
             prevaltoff = altoff
 
-        while off >= 0:
+        prevwasdeleted = False
+        off = len(self.nodes)-1
+        lo, hi = float('-inf'), float('inf')
+        while True:
             if hasattr(self, 'iters'):
                 self.iters += 1
 
             node = self.nodes[off]
+            # TODO wait, should we continue to grab offs here??
             if node.key == key:
-                # found key!
+                if prevwasdeleted:
+                    alts = alts[:-1]
+                # found key
                 break
 
             for altkey, altoff in node.alts:
@@ -95,6 +110,11 @@ class LogTree:
                     if key < altkey:
                         hi = altkey
                         if altkey <= node.key:
+                            # omit deletes
+                            # TODO ugh, this doesn't work because we don't
+                            # adjust our hi/lo range correctly...
+#                            if not (node.value is None and
+#                                    altkey == node.alts[-1][0]):
                             appendalt((altkey, off))
                             off = altoff
                             break
@@ -103,37 +123,46 @@ class LogTree:
                     elif key >= altkey:
                         lo = altkey
                         if altkey > node.key:
+                            # omit deletes
+#                            if not (node.value is None and
+#                                    altkey == node.alts[-1][0]):
                             appendalt((altkey, off))
                             off = altoff
                             break
                         else:
                             appendalt((altkey, altoff))
             else:
-                # did not find key
+                # did not find key, split leaf?
+#                # omit deletes
+#                #if node.key != key and not node.value is None:
                 appendalt((max(node.key, key), off))
+                # omit deletion?
+                if prevwasdeleted:
+                    alts = alts[:-1]
                 break
 
-#        # should not have duplicates
-#        alt_uniq = co.defaultdict(lambda: 0)
-#        for alt in alts:
-#            alt_uniq[alt[0]] += 1
-#        for alt in alts:
-#            assert alt_uniq[alt[0]] == 1, "alts not uniqe!? %s" % alt
+            prevwasdeleted = node.value is None
 
         # append
         self.nodes.append(LogTree.Node(key, value, alts=alts))
 
-    def lookup(self, key):
+    def lookup(self, key, givenode=False):
+        if not self.nodes:
+            return None
+
         off = len(self.nodes)-1
         lo, hi = float('-inf'), float('inf')
-
-        while off >= 0:
+        while True:
             if hasattr(self, 'iters'):
                 self.iters += 1
 
             node = self.nodes[off]
             if node.key == key:
-                return node.value
+                # found key
+                if givenode:
+                    return node
+                else:
+                    return node.value
 
             for altkey, altoff in node.alts:
                 if hasattr(self, 'iters2'):
@@ -150,9 +179,14 @@ class LogTree:
                             off = altoff
                             break
             else:
+                # did not find key
                 return None
 
+    # TODO scrutinize this more?
     def traverse(self):
+        if not self.nodes:
+            return
+
         # traversal is like lookup, but we keep track of
         # hi, and use that for our next lookup, convenient
         # that we already track this
@@ -160,8 +194,7 @@ class LogTree:
         while prev != float('inf'):
             off = len(self.nodes)-1
             lo, hi = float('-inf'), float('inf')
-
-            while off >= 0:
+            while True:
                 if hasattr(self, 'iters'):
                     self.iters += 1
 
@@ -182,8 +215,82 @@ class LogTree:
                                 break
                 else:
                     prev = hi
-                    yield (node.key, node.value)
+                    # skip deletes # TODO can this be better?
+                    if node.value:
+                        yield (node.key, node.value)
                     break
+
+    def remove(self, key):
+        # Just use a stub to mark key as "removed", the
+        # key may or may not be cleaned up in later appends.
+        # Worst case we cleanup removals during compactions.
+        #
+        # Note the delete algorithm in Dhara could work here, but
+        # then we would potentially be copying over a large kv pair
+        # when deleting a small pair. Figuring out the tree to
+        # append also requires either backtracking or multiple passes,
+        # which gets complicated. Oh and we avoid the can't-delete-root
+        # issue this way.
+        self.append(key, None)
+        
+    def remove2(self, key):
+        # TODO this... doesn't work?
+#        print('removing', key, self)
+#        # Note that here we just copy the sibling of our deleted
+#        # node, in practice we probably want to use indirection to
+#        # avoid a copy... Maybe? Hmm, maybe both are worth benchmarking
+#        # when implemented
+#
+#        # first find our sibling
+#        # TODO can this be deduplicated?
+#        node = self.lookup(key, givenode=True)
+#        if not node:
+#            return False
+#
+#        sibling = None
+#        off = len(self.nodes)-1
+#        lo, hi = float('-inf'), float('inf')
+#        while True:
+#            if hasattr(self, 'iters'):
+#                self.iters += 1
+#
+#            node = self.nodes[off]
+#            for altkey, altoff in node.alts:
+#                if hasattr(self, 'iters2'):
+#                    self.iters2 += 1
+#                if altkey > lo and altkey < hi:
+#                    if key < altkey:
+#                        hi = altkey
+#                        if altkey <= node.key:
+#                            sibling = (node.key, off)
+#                            off = altoff
+#                            break
+#                        else:
+#                            sibling = (altkey, altoff)
+#                    elif key >= altkey:
+#                        lo = altkey
+#                        if altkey > node.key:
+#                            sibling = (node.key, off)
+#                            off = altoff
+#                            break
+#                        else:
+#                            sibling = (altkey, altoff)
+#            else:
+#                if node.key != key:
+#                    # key not in tree?
+#                    return False
+#                break
+#
+#        # can't delete last node in the tree
+#        assert sibling
+#
+#        # copy over sibling, removing our key from the tree
+#        # TODO can this be deduplicated more cleanly?
+#        #print('removing', key, off, 'via', sibling[0], sibling[1])
+#        # TODO can we search directly for sibling?
+#        self.append(self.nodes[sibling[1]].key, self.nodes[sibling[1]].value, omit=off)
+#        return True
+        pass
 
     def height(self):
         return max(len(node.alts) for node in self.nodes)
@@ -194,6 +301,16 @@ def main():
     tree.append(2, 'b')
     tree.append(3, 'c')
     tree.append(4, 'd')
+    print(tree)
+    print('1 = ', tree.lookup(1))
+    print('2 = ', tree.lookup(2))
+    print('3 = ', tree.lookup(3))
+    print('4 = ', tree.lookup(4))
+    print('traverse = ', list(tree.traverse()))
+    tree.remove(1)
+    tree.remove(2)
+    tree.remove(3)
+    tree.remove(4)
     print(tree)
     print('1 = ', tree.lookup(1))
     print('2 = ', tree.lookup(2))
@@ -211,6 +328,16 @@ def main():
     print('3 = ', tree.lookup(3))
     print('2 = ', tree.lookup(2))
     print('1 = ', tree.lookup(1))
+    print('traverse = ', list(tree.traverse()))
+    tree.remove(4)
+    tree.remove(3)
+    tree.remove(2)
+    tree.remove(1)
+    print(tree)
+    print('1 = ', tree.lookup(1))
+    print('2 = ', tree.lookup(2))
+    print('3 = ', tree.lookup(3))
+    print('4 = ', tree.lookup(4))
     print('traverse = ', list(tree.traverse()))
 
     tree = LogTree()
