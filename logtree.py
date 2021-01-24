@@ -20,7 +20,9 @@ class LogTree:
             return '%s(%r: %r%s)' % (
                 self.type.title() if self.type else '',
                 self.key, self.value,
-                '; %s' % ','.join('%s:%s' % (k, v) for (k, v) in self.alts)
+                '; %s' % ','.join(
+                    '%s%s@%s' % (k, '%+d'%d if d else '', v)
+                    for (k, v, d) in self.alts)
                     if self.alts else '')
 
         def __repr__(self):
@@ -64,8 +66,14 @@ class LogTree:
         # but not a deal-breaker.
         prevaltkey = None
         prevaltoff = None
-        def appendalt(alt):
-            altkey, altoff = alt
+        def appendalt(alt, end=False):
+            altkey, altoff, altdelta = alt
+
+            # adjust for creation?
+#            if type == 'create' and altkey >= key:
+#                altkey += 1
+#            if type == 'create' and altkey >= key:
+#                altdelta += 1
 
             # rotate?
             nonlocal prevaltkey
@@ -80,11 +88,13 @@ class LogTree:
                 prevaltkey = None
                 prevaltoff = None
 
-            alts.append((altkey, altoff))
+            alts.append((altkey, altoff, altdelta))
             prevaltkey = altkey
             prevaltoff = altoff
 
         prevwasdeleted = False
+        delta = 0
+        splice = +1 if type == 'create' else 0
         off = len(self.nodes)-1
         lo, hi = float('-inf'), float('inf')
         while True:
@@ -92,47 +102,40 @@ class LogTree:
                 self.iters += 1
 
             node = self.nodes[off]
-            # TODO wait, should we continue to grab offs here??
-            if node.key == key:
+            if node.key+delta == key and type != 'create':
                 if prevwasdeleted:
                     alts = alts[:-1]
                 # found key
                 break
 
-            for altkey, altoff in node.alts:
+            for altkey, altoff, altdelta in node.alts:
                 if hasattr(self, 'iters2'):
                     self.iters2 += 1
-                if altkey > lo and altkey < hi:
-                    if key < altkey:
-                        hi = altkey
+                if altkey+delta > lo and altkey+delta+splice < hi:
+                    if key < altkey+delta+splice:
+                        hi = altkey+delta+splice
                         if altkey <= node.key:
-                            # omit deletes
-                            # TODO ugh, this doesn't work because we don't
-                            # adjust our hi/lo range correctly...
-#                            if not (node.value is None and
-#                                    altkey == node.alts[-1][0]):
-                            appendalt((altkey, off))
+                            appendalt((altkey+delta+splice, off, delta+splice))
                             off = altoff
+                            delta += altdelta
                             break
                         else:
-                            appendalt((altkey, altoff))
-                    elif key >= altkey:
-                        lo = altkey
+                            appendalt((altkey+delta+splice, altoff, delta+altdelta+splice))
+                    elif key >= altkey+delta:
+                        lo = altkey+delta
                         if altkey > node.key:
-                            # omit deletes
-#                            if not (node.value is None and
-#                                    altkey == node.alts[-1][0]):
-                            appendalt((altkey, off))
+                            appendalt((altkey+delta, off, delta))
                             off = altoff
+                            delta += altdelta
                             break
                         else:
-                            appendalt((altkey, altoff))
+                            appendalt((altkey+delta, altoff, delta+altdelta))
             else:
                 # did not find key, split leaf?
-#                # omit deletes
-#                #if node.key != key and not node.value is None:
-                appendalt((max(node.key, key), off))
-                # omit deletion?
+                appendalt((max(node.key+delta, key)+(
+                        splice if node.key+delta >= key else 0), off,
+                    delta+(splice if node.key+delta >= key else 0)))
+                # omit deletes
                 if prevwasdeleted:
                     alts = alts[:-1]
                 break
@@ -142,10 +145,11 @@ class LogTree:
         # append
         self.nodes.append(LogTree.Node(key, value, type=type, alts=alts))
 
-    def lookup(self, key, givenode=False):
+    def lookup(self, key):
         if not self.nodes:
             return None
 
+        delta = 0
         off = len(self.nodes)-1
         lo, hi = float('-inf'), float('inf')
         while True:
@@ -153,26 +157,25 @@ class LogTree:
                 self.iters += 1
 
             node = self.nodes[off]
-            if node.key == key:
+            if node.key+delta == key:
                 # found key
-                if givenode:
-                    return node
-                else:
-                    return node.value
+                return node.value
 
-            for altkey, altoff in node.alts:
+            for altkey, altoff, altdelta in node.alts:
                 if hasattr(self, 'iters2'):
                     self.iters2 += 1
-                if altkey > lo and altkey < hi:
-                    if key < altkey:
-                        hi = altkey
+                if altkey+delta > lo and altkey+delta < hi:
+                    if key < altkey+delta:
+                        hi = altkey+delta
                         if altkey <= node.key:
                             off = altoff
+                            delta += altdelta
                             break
-                    elif key >= altkey:
-                        lo = altkey
+                    elif key >= altkey+delta:
+                        lo = altkey+delta
                         if altkey > node.key:
                             off = altoff
+                            delta += altdelta
                             break
             else:
                 # did not find key
@@ -195,7 +198,7 @@ class LogTree:
                     self.iters += 1
 
                 node = self.nodes[off]
-                for altkey, altoff in node.alts:
+                for altkey, altoff, altdelta in node.alts:
                     if hasattr(self, 'iters2'):
                         self.iters2 += 1
                     if altkey > lo and altkey < hi:
@@ -246,44 +249,50 @@ def main():
     tree.append(2, 'b')
     tree.append(3, 'c')
     tree.append(4, 'd')
+    tree.create(2, 'b\'')
     print(tree)
-    print('1 = ', tree.lookup(1))
-    print('2 = ', tree.lookup(2))
-    print('3 = ', tree.lookup(3))
-    print('4 = ', tree.lookup(4))
-    print('traverse = ', list(tree.traverse()))
+    print('1 = %s' % tree.lookup(1))
+    print('2 = %s' % tree.lookup(2))
+    print('3 = %s' % tree.lookup(3))
+    print('4 = %s' % tree.lookup(4))
+    print('5 = %s' % tree.lookup(5))
+    print('traverse = %s' % list(tree.traverse()))
     tree.remove(1)
     tree.remove(2)
     tree.remove(3)
     tree.remove(4)
     print(tree)
-    print('1 = ', tree.lookup(1))
-    print('2 = ', tree.lookup(2))
-    print('3 = ', tree.lookup(3))
-    print('4 = ', tree.lookup(4))
-    print('traverse = ', list(tree.traverse()))
+    print('1 = %s' % tree.lookup(1))
+    print('2 = %s' % tree.lookup(2))
+    print('3 = %s' % tree.lookup(3))
+    print('4 = %s' % tree.lookup(4))
+    print('5 = %s' % tree.lookup(5))
+    print('traverse = %s' % list(tree.traverse()))
 
     tree = LogTree()
     tree.append(4, 'd')
     tree.append(3, 'c')
     tree.append(2, 'b')
     tree.append(1, 'a')
+    tree.create(2, 'b\'')
     print(tree)
-    print('4 = ', tree.lookup(4))
-    print('3 = ', tree.lookup(3))
-    print('2 = ', tree.lookup(2))
-    print('1 = ', tree.lookup(1))
-    print('traverse = ', list(tree.traverse()))
+    print('1 = %s' % tree.lookup(1))
+    print('2 = %s' % tree.lookup(2))
+    print('3 = %s' % tree.lookup(3))
+    print('4 = %s' % tree.lookup(4))
+    print('5 = %s' % tree.lookup(5))
+    print('traverse = %s' % list(tree.traverse()))
     tree.remove(4)
     tree.remove(3)
     tree.remove(2)
     tree.remove(1)
     print(tree)
-    print('1 = ', tree.lookup(1))
-    print('2 = ', tree.lookup(2))
-    print('3 = ', tree.lookup(3))
-    print('4 = ', tree.lookup(4))
-    print('traverse = ', list(tree.traverse()))
+    print('1 = %s' % tree.lookup(1))
+    print('2 = %s' % tree.lookup(2))
+    print('3 = %s' % tree.lookup(3))
+    print('4 = %s' % tree.lookup(4))
+    print('5 = %s' % tree.lookup(5))
+    print('traverse = %s' % list(tree.traverse()))
 
     tree = LogTree()
     tree.append(3, 'a')
@@ -313,8 +322,8 @@ def main():
     print('traverse = ', list(tree.traverse()))
 
     print("testing...")
-    for n in [10, 100, 1000]:
-        for case in ['appends', 'updates', 'removes']:
+    for n in [2, 3, 4, 10, 100, 1000]:
+        for case in ['appends', 'updates', 'removes', 'creates']:
             for order in ['in_order', 'reversed', 'random']:
                 if order == 'in_order':
                     xs = list(range(n))
@@ -340,20 +349,22 @@ def main():
                         assert tree.lookup(x) == baseline.get(x), (
                             "test %s %s %s FAILED\n"
                             "tree.lookup(%s) => %s\n"
-                            "baseline[%s] => %s" % (
+                            "baseline[%s] => %s%s" % (
                                 case, order, n,
                                 x, tree.lookup(x),
-                                x, baseline.get(x)))
+                                x, baseline.get(x),
+                                '\n%s' % tree if n <= 10 else ''))
                     # testing traversal
                     traversal = list(tree.traverse())
                     baseline_traversal = sorted(baseline.items())
                     assert traversal == baseline_traversal, (
                             "test %s %s %s FAILED\n"
                             "tree.traversal() => %s\n"
-                            "sorted(baseline) => %s" % (
+                            "sorted(baseline) => %s%s" % (
                                 case, order, n,
                                 traversal,
-                                baseline_traversal))
+                                baseline_traversal,
+                                '\n%s' % tree if n <= 10 else ''))
 
                 elif case == 'updates':
                     tree = LogTree()
@@ -371,20 +382,22 @@ def main():
                         assert tree.lookup(x) == baseline.get(x), (
                             "test %s %s %s FAILED\n"
                             "tree.lookup(%s) => %s\n"
-                            "baseline[%s] => %s" % (
+                            "baseline[%s] => %s%s" % (
                                 case, order, n,
                                 x, tree.lookup(x),
-                                x, baseline.get(x)))
+                                x, baseline.get(x),
+                                '\n%s' % tree if n <= 10 else ''))
                     # testing traversal
                     traversal = list(tree.traverse())
                     baseline_traversal = sorted(baseline.items())
                     assert traversal == baseline_traversal, (
                             "test %s %s %s FAILED\n"
                             "tree.traversal() => %s\n"
-                            "sorted(baseline) => %s" % (
+                            "sorted(baseline) => %s%s" % (
                                 case, order, n,
                                 traversal,
-                                baseline_traversal))
+                                baseline_traversal,
+                                '\n%s' % tree if n <= 10 else ''))
 
                 elif case == 'removes':
                     tree = LogTree()
@@ -402,22 +415,60 @@ def main():
                         assert tree.lookup(x) == baseline.get(x), (
                             "test %s %s %s FAILED\n"
                             "tree.lookup(%s) => %s\n"
-                            "baseline.get(%s) => %s" % (
+                            "baseline.get(%s) => %s%s" % (
                                 case, order, n,
                                 x, tree.lookup(x),
-                                x, baseline.get(x)))
+                                x, baseline.get(x),
+                                '\n%s' % tree if n <= 10 else ''))
                     # testing traversal
                     traversal = list(tree.traverse())
                     baseline_traversal = sorted(baseline.items())
                     assert traversal == baseline_traversal, (
                             "test %s %s %s FAILED\n"
                             "tree.traversal() => %s\n"
-                            "sorted(baseline) => %s" % (
+                            "sorted(baseline) => %s%s" % (
                                 case, order, n,
                                 traversal,
-                                baseline_traversal))
+                                baseline_traversal,
+                                '\n%s' % tree if n <= 10 else ''))
+
+                elif case == 'creates':
+                    tree = LogTree()
+                    baseline = {}
+                    for x in xs:
+                        # testing appends
+                        tree.append(x, repr(x))
+                        baseline[x] = repr(x)
+                    for y in ys:
+                        # testing updates
+                        tree.create(y, '%d\''%y)
+                        baseline = {(k+1 if k >= y else k): v for k, v in baseline.items()}
+                        baseline[y] = '%d\''%y
+#                    for x in xs:
+#                        # testing lookups
+#                        assert tree.lookup(x) == baseline.get(x), (
+#                            "test %s %s %s FAILED\n"
+#                            "tree.lookup(%s) => %s\n"
+#                            "baseline[%s] => %s%s" % (
+#                                case, order, n,
+#                                x, tree.lookup(x),
+#                                x, baseline.get(x),
+#                                '\n%s' % tree if n <= 10 else ''))
+                    # TODO
+#                    # testing traversal
+#                    traversal = list(tree.traverse())
+#                    baseline_traversal = sorted(baseline.items())
+#                    assert traversal == baseline_traversal, (
+#                            "test %s %s %s FAILED\n"
+#                            "tree.traversal() => %s\n"
+#                            "sorted(baseline) => %s%s" % (
+#                                case, order, n,
+#                                traversal,
+#                                baseline_traversal,
+#                                '\n%s' % tree if n <= 10 else ''))
 
     print('tests passed!')
+
 
 if __name__ == "__main__":
     import sys

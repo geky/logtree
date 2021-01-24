@@ -168,6 +168,26 @@ def main(case, order, path, N=10000, step=10):
 #                        print('failed %s + %s for n=%r, traversal %r' % (
 #                            case, order, n, traversal))
 #                        sys.exit(1)
+
+            elif case == 'creates':
+                # Fun fact! Replicating this behavior with Python's built
+                # in data structures takes O(n^2), more than the actual
+                # data structure we're testing. So just trust that it works
+                # for now (note there are other tests in logtree.py)
+                iters = []
+                iters2 = []
+                tree = LogTree()
+                for i in ORDERS[order](n, 0):
+                    tree.append(i, repr(i))
+
+                for i in ORDERS[order](n, 1):
+                    tree.iters = 0
+                    tree.iters2 = 0
+                    tree.create(i, '%d\'' % i)
+                    iters.append(tree.iters)
+                    iters2.append(tree.iters2)
+                heights = list(tree.heights())
+
             else:
                 print("unknown case %r?" % case)
                 sys.exit(1)

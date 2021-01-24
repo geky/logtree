@@ -13,6 +13,7 @@ CASES = [
     'traversal',
     'updates',
     'removes',
+    'creates',
 ]
 ORDERS = [
     'random',
@@ -29,7 +30,7 @@ FIELDS = [
 
 # seaborn color palette
 COLORS = ['#4c72b0', '#dd8452', '#55a868', '#c44e52', '#8172b3', '#937860', '#da8bc3', '#8c8c8c', '#ccb974', '#64b5cd']
-COLORS = [COLORS[0], COLORS[1], COLORS[1], COLORS[2], COLORS[2]]
+#COLORS = [COLORS[0], COLORS[1], COLORS[1], COLORS[2], COLORS[2]]
 
 def main(results, output):
     with open(results) as f:
