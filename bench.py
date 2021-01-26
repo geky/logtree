@@ -188,6 +188,32 @@ def main(case, order, path, N=10000, step=10):
                     iters2.append(tree.iters2)
                 heights = list(tree.heights())
 
+            elif case == 'deletes':
+                # This is another funny one where replicating the behavior
+                # to verify the results would be O(n^2) without implementing
+                # a whole other data structure. Its more complicated because
+                # we can't just delete willy-nilly, we need to lookup to make
+                # sure what we're deleting exists. We don't count this against
+                # the runtime, since in practice a delete would be predicated
+                # on something existing. Note though this does mean the actual
+                # amount of deletes is on the order of ~1/2(?), so we double
+                # the amount in the tree to compensate.
+                iters = []
+                iters2 = []
+                tree = LogTree()
+                for i in ORDERS[order](2*n, 0):
+                    tree.append(i, repr(i))
+
+                for i in ORDERS[order](2*n, 1):
+                    if not tree.lookup(i):
+                        continue
+                    tree.iters = 0
+                    tree.iters2 = 0
+                    tree.delete(i)
+                    iters.append(tree.iters)
+                    iters2.append(tree.iters2)
+                heights = list(tree.heights())
+
             else:
                 print("unknown case %r?" % case)
                 sys.exit(1)
