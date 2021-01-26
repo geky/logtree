@@ -29,12 +29,19 @@ def order_reversed_then_in_order(n, i=0):
     else:
         return order_in_order(n)
 
+def order_repeated(n, i=0):
+    if i == 0:
+        return order_random(n)
+    else:
+        return it.repeat(0, n)
+
 ORDERS = {
     'random':                   order_random,
     'in_order':                 order_in_order,
     'reversed':                 order_reversed,
     'in_order_then_reversed':   order_in_order_then_reversed,
     'reversed_then_in_order':   order_reversed_then_in_order,
+    'repeated':                 order_repeated,
 }
 
 def main(case, order, path, N=10000, step=10):
