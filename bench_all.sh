@@ -18,7 +18,9 @@ for case_ in \
         lookups \
         traversal \
         updates \
-        removes
+        removes \
+        creates \
+        deletes
 do
     for order in \
             random \
@@ -33,7 +35,9 @@ done
 # 2-level orders only useful for some cases
 for case_ in \
         updates \
-        removes
+        removes \
+        creates \
+        deletes
 do
     for order in \
             in_order_then_reversed \
