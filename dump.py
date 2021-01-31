@@ -41,8 +41,10 @@ def main(output):
     with open(output, 'w') as f:
         for i, node in enumerate(tree.nodes):
             f.write('node,%s,%s,%s\n' % (i, node.key, node.value))
-            for j, (altlt, altkey, altoff, altskip, altdelta) in enumerate(node.alts):
-                f.write('alt,%s,%s,%s,%s,%s,%s,%s\n' % (j, i, 1 if altlt else 0, altkey, altoff, altskip, altdelta))
+            for j, alt in enumerate(node.alts):
+                f.write('alt,%s,%s,%s,%s,%s,%s,%s\n' % (
+                    j, i, 1 if alt.lt else 0,
+                    alt.key, alt.off, alt.skip, alt.delta))
 
 if __name__ == "__main__":
     import sys
