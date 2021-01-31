@@ -31,17 +31,20 @@ class LogTree:
             return 'LogTree.Node%s' % self
 
     class Alt:
-        def __init__(self, lt, key, off, skip, delta):
+        def __init__(self, lt, key, weight, off, skip, delta):
             self.lt = lt
             self.key = key
+            self.weight = weight
+            # in practice, alt.skip + alt.off can be combined into one offset
             self.off = off
             self.skip = skip
             self.delta = delta
 
         def __str__(self):
-            return '%s%s@%s[%s]%s' % (
+            return '%s%sw%s@%s[%s]%s' % (
                 '<' if self.lt else '≥',
-                self.key, self.off, self.skip,
+                self.key, self.weight,
+                self.off, self.skip,
                 '%+d'%self.delta if self.delta else '')
 
         def __repr__(self):
@@ -49,6 +52,7 @@ class LogTree:
 
     def __init__(self, nodes=[], rotate_pred='crc_key'):
         self.nodes = []
+        self.count = 0
         for k, v in nodes:
             self.append(k, v)
 
@@ -86,11 +90,13 @@ class LogTree:
     def append(self, key, value, type=None):
         #print('append')
         if not self.nodes:
+            self.count += 1
             self.nodes.append(LogTree.Node(key, value, type=type, alts=[]))
             return
 
         # build alts
         alts = []
+        weight = self.count
         prevwasdeleted = False
         prevwasrotated = False
 
@@ -105,6 +111,12 @@ class LogTree:
         prevskip = None
         def appendalt(alt, notoff, notskip, off, skip, end=False):
             #print(alt.key)
+
+            # TODO wait we need this?
+            # skip if weight == 0?
+            # TODO this happens for some reason, is this a calculation mistake?
+#            if alt.weight == 0:
+#                return
 
             if alt.lt:
                 assert alt.key <= key, (
@@ -178,8 +190,9 @@ class LogTree:
                 #print('rotating %s <-> %s' % (alt.key, prevaltkey))
                 alt.off = prevoff
                 alt.skip = prevskip
+                alt.weight += prevalt.weight
                 # can only go back once with bounded RAM
-                prev = (None, None, None, None, None)
+                prevalt = None
                 prevnot = (None, None)
                 #prevwasrotated = True
             else:
@@ -210,9 +223,8 @@ class LogTree:
 #                # found key
 #                break
 
-            # in practice, alt.skip + alt.off can be combined into one offset
             #print(skip)
-            for i, alt in enumerate(node.alts[skip:]):
+            for i, alt in it.islice(enumerate(node.alts), skip, None):
                 if hasattr(self, 'iters2'):
                     self.iters2 += 1
                 #if alt.key+delta > lo and alt.key+delta+splice < hi:
@@ -222,10 +234,12 @@ class LogTree:
                             LogTree.Alt(
                                 lt=True,
                                 key=alt.key+delta,
+                                weight=weight-alt.weight,
                                 off=off,
                                 skip=i+1,
                                 delta=delta),
                             None, None, off, i)
+                        weight = alt.weight
                         lo = alt.key+delta
                         delta += alt.delta
                         off = alt.off
@@ -236,20 +250,24 @@ class LogTree:
                             LogTree.Alt(
                                 lt=False,
                                 key=alt.key+delta+splice+dsplice,
+                                weight=alt.weight,
                                 off=alt.off,
                                 skip=alt.skip,
                                 delta=delta+alt.delta+splice+dsplice),
                             off, i, off, i)
+                        weight -= alt.weight
                         hi = alt.key+delta+splice
                 elif alt.lt and alt.key+delta > lo:
                     if key < alt.key+delta+splice:
                         appendalt(LogTree.Alt(
                                 lt=False,
                                 key=alt.key+delta+splice+dsplice,
+                                weight=weight-alt.weight,
                                 off=off,
                                 skip=i+1,
                                 delta=delta+splice+dsplice),
                             None, None, off, i)
+                        weight = alt.weight
                         hi = alt.key+delta+splice
                         delta += alt.delta
                         off = alt.off
@@ -260,10 +278,12 @@ class LogTree:
                             LogTree.Alt(
                                 lt=True,
                                 key=alt.key+delta,
+                                weight=alt.weight,
                                 off=alt.off,
                                 skip=alt.skip,
                                 delta=delta+alt.delta),
                             off, i, off, i)
+                        weight -= alt.weight
                         lo = alt.key+delta
 
 
@@ -294,12 +314,14 @@ class LogTree:
                             key=node.key+delta+splice
                                 if node.key+delta >= key
                                 else key,
+                            weight=1,
                             off=off,
                             skip=len(node.alts),
                             delta=delta+splice
                                 if node.key+delta >= key
                                 else delta),
                         None, None, off, len(node.alts))
+                    self.count += 1
                 # omit deletes
                 if prevwasdeleted and not prevwasrotated:
                     alts = alts[:-1]
@@ -309,6 +331,7 @@ class LogTree:
             # TODO create 0, 1, 2, delete 1, create 2, 3 ends up with
             # extra node?
             prevwasdeleted = node.value is None and node.type != 'delete'
+            #prevalt = None
 
         # append
         self.nodes.append(LogTree.Node(key, value, type=type, alts=alts))

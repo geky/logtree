@@ -15,6 +15,7 @@ import random
 #XS = [0,1,2,3,4,5]
 
 XS = [0,1,1,0,3,2,3,1,0,9]
+#XS = [3,8,6,1,7,4,5,2,0,9]
 
 def main(output):
     # create tree
@@ -23,6 +24,8 @@ def main(output):
 #        tree.append(i, c)
     for i, x in enumerate(XS):
         tree.create(x, string.ascii_lowercase[i])
+#    for i, x in enumerate(XS):
+#        tree.append(x, string.ascii_lowercase[i])
 #    tree.create(0, 'a')
 #    tree.create(1, 'b')
 #    tree.create(2, 'c')
@@ -42,9 +45,9 @@ def main(output):
         for i, node in enumerate(tree.nodes):
             f.write('node,%s,%s,%s\n' % (i, node.key, node.value))
             for j, alt in enumerate(node.alts):
-                f.write('alt,%s,%s,%s,%s,%s,%s,%s\n' % (
+                f.write('alt,%s,%s,%s,%s,%s,%s,%s,%s\n' % (
                     j, i, 1 if alt.lt else 0,
-                    alt.key, alt.off, alt.skip, alt.delta))
+                    alt.key, alt.weight, alt.off, alt.skip, alt.delta))
 
 if __name__ == "__main__":
     import sys
