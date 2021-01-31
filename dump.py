@@ -19,8 +19,10 @@ import random
 
 #XS = [0,0,1,0,1,4,1,2,8,5]
 #K = 6
-XS = [0,0,1,0,1,4] # ,1,2,8,5]
-K = 3
+#XS = [0,0,1,0,1,4] # ,1,2,8,5]
+#K = 3
+XS = [0,0,1,3]
+K = 0
 
 def main(output):
     # create tree
@@ -32,8 +34,8 @@ def main(output):
 #    for i, x in enumerate(XS):
 #        tree.append(x, string.ascii_lowercase[i])
     for i, x in enumerate(XS):
-        tree.append2(x, repr(x))
-    print('lookup2(%s) => ' % K, tree.lookup2(K))
+        tree.append3(x, repr(x))
+    print('lookup2(%s) => ' % K, tree.lookup3(K))
 #    tree.create(0, 'a')
 #    tree.create(1, 'b')
 #    tree.create(2, 'c')

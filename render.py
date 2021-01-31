@@ -31,9 +31,10 @@ def main(input, output):
                         (int(line[2]), int(line[1])))
                 G.add_edge((int(line[2]), int(line[1])), (int(line[7]), int(line[8])))
                 node_labels[(int(line[2]), int(line[1]))] = (
-                    "%s%sw%s\n%+d" % (
-                        "<" if int(line[3]) else ">=",
-                        line[4], line[5], #line[6],
+                    u"%s%sw%s\n%+d" % (
+                        u"<" if int(line[3]) else u"≥",
+                        line[4], line[6],
+                        #line[4], line[5], #line[6],
                         int(line[9])))
 #                if int(line[7]):
 #                    edge_labels[
