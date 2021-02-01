@@ -577,8 +577,8 @@ class LogTree:
                     #alt.off > prevaltoff and 
                     #off == alt.off and off == prevoff and skip == prevskip+1 and
                     value is not None and
-                    True): #self.rotate_pred(alt, prevalt)):
-                #print('R', prevalt, alt)
+                    self.rotate_pred(alt, prevalt)):
+                print('R', prevalt, alt)
                 alts.pop()
 #                if len(self.nodes) == 6:
 #                    print('pop')
@@ -636,6 +636,13 @@ class LogTree:
             for i, alt in it.islice(enumerate(node.alts), skip, None):
                 if hasattr(self, 'iters2'):
                     self.iters2 += 1
+                # TODO need this?
+                if range[0] >= range[1]:
+                    print('S', range, alt)
+#                if range[0] >= range[1]:
+#                    print('S', range, alt)
+#                    if not alt.lt:
+#                        continue
 #                if range[0] == range[1]:
 #                    print('S', range, alt)
 #                    continue
@@ -645,7 +652,7 @@ class LogTree:
                 #if alt.key+delta > lo and alt.key+delta+splice < hi:
                 if not alt.lt: # and alt.key+delta+splice < hi:
 #                    if key >= alt.key+delta:
-                    if key >= range[0]+alt.iweight: # and range[1]-range[0] >= alt.weight:
+                    if key >= range[0]+alt.iweight or range[0] >= range[1]: # and range[1]-range[0] >= alt.weight:
                         appendalt(
                             LogTree.Alt(
                                 lt=True,
@@ -680,7 +687,7 @@ class LogTree:
                         range[1] = range[0]-1+alt.iweight
                 elif alt.lt: # and alt.key+delta > lo:
                     #if key < alt.key+delta+splice:
-                    if key < range[0]+alt.iweight: # and range[1]-range[0] >= alt.weight:
+                    if key < range[0]+alt.iweight and not range[0] >= range[1]: # and range[1]-range[0] >= alt.weight:
                         appendalt(LogTree.Alt(
                                 lt=False,
                                 key=alt.key+delta+splice+dsplice,
@@ -789,8 +796,8 @@ class LogTree:
 #                    print('S', range, alt)
 #                    continue
                 # TODO need this?
-#                if range[0] >= range[1]:
-#                    print('S', range, alt)
+                if range[0] >= range[1]:
+                    print('S', range, alt)
 #                    if not alt.lt:
 #                        continue
                 #print('L', key, range, '%sw%s' % ('<' if alt.lt else '>', alt.weight))
@@ -807,7 +814,7 @@ class LogTree:
                     self.iters2 += 1
                 #if alt.key+delta > lo and alt.key+delta < hi:
                 if not alt.lt: # and alt.key+delta < hi:
-                    if key >= range[0]+alt.iweight: # and range[1]-range[0] >= alt.weight:
+                    if key >= range[0]+alt.iweight or range[0] >= range[1]: # and range[1]-range[0] >= alt.weight:
 #                        lo = alt.key+delta
 #                        delta += alt.delta
                         off = alt.off
@@ -818,7 +825,7 @@ class LogTree:
                         range[1] = range[0]-1+alt.iweight
                         #hi = alt.key+delta
                 elif alt.lt: # and alt.key+delta > lo:
-                    if key < range[0]+alt.iweight: # and range[1]-range[0] >= alt.weight:
+                    if key < range[0]+alt.iweight and not range[0] >= range[1]: # and range[1]-range[0] >= alt.weight:
 #                        hi = alt.key+delta
 #                        delta += alt.delta
                         off = alt.off
