@@ -32,7 +32,7 @@ class LogTree:
             return 'LogTree.Node%s' % self
 
     class Alt:
-        def __init__(self, lt, key, weight, iweight, off, skip, delta):
+        def __init__(self, lt, key, weight, iweight, off, skip, delta, rotate=False):
             self.lt = lt
             self.key = key
             self.weight = weight
@@ -41,10 +41,11 @@ class LogTree:
             self.off = off
             self.skip = skip
             self.delta = delta
+            self.rotate = rotate
 
         def __str__(self):
             return '%s%sw%s@%s.%s%s' % (
-                '<' if self.lt else '≥',
+                '<' if self.lt else '≥' if not self.rotate else '>',
                 self.key, self.weight,
                 self.off, self.skip,
                 '%+d'%self.delta if self.delta else '')
@@ -597,7 +598,9 @@ class LogTree:
                 if alt.lt:
                     alt.iweight += prevalt.iweight
                 else:
-                    pass
+                    # note, since search is biased left we only need to
+                    # track gt rotates
+                    alt.rotate = True
                 # can only go back once with bounded RAM
                 prevalt = None
                 prevnot = (None, None)
