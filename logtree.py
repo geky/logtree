@@ -12,11 +12,13 @@ def brev(n):
 
 class LogTree:
     class Node:
-        def __init__(self, key, value, type=None, alts=[]):
+        def __init__(self, key, value, type=None, alts=[], delta2=0, root=0):
             self.key = key
             self.value = value
             self.type = type
             self.alts = alts
+            self.delta2 = delta2
+            self.root = root
 
         def __str__(self, off=None):
             return '(%s%r: %r%s)%s' % (
@@ -32,7 +34,7 @@ class LogTree:
             return 'LogTree.Node%s' % self
 
     class Alt:
-        def __init__(self, lt, key, weight, iweight, off, skip, delta, rotate=False):
+        def __init__(self, lt, key, weight, iweight, off, skip, delta, delta2=0, rotate=False):
             self.lt = lt
             self.key = key
             self.weight = weight
@@ -42,11 +44,12 @@ class LogTree:
             self.skip = skip
             self.delta = delta
             self.rotate = rotate
+            self.delta2 = delta2
 
         def __str__(self):
-            return '%s%sw%s@%s.%s%s' % (
+            return '%s%s%s%d@%s.%s%s' % (
                 '<' if self.lt else '≥' if not self.rotate else '>',
-                self.key, self.weight,
+                self.key, '-' if self.lt else '+', self.delta2,
                 self.off, self.skip,
                 '%+d'%self.delta if self.delta else '')
 
@@ -94,7 +97,7 @@ class LogTree:
         #print('append')
         if not self.nodes:
             self.count += 1
-            self.nodes.append(LogTree.Node(key, value, type=type, alts=[]))
+            self.nodes.append(LogTree.Node(key, value, type=type, alts=[], root=key))
             return
 
         # build alts
@@ -109,6 +112,7 @@ class LogTree:
         # Note we just access the alt end here, but we would
         # actually need to keep the previous alt in RAM. Annoying
         # but not a deal-breaker.
+        nroot = 0
         prevalt = None
         prevnot = (None, None)
         prevoff = None
@@ -132,6 +136,7 @@ class LogTree:
                         alt.key, key, alt.lt))
 
             # rotate?
+            nonlocal nroot
             nonlocal prevalt
             nonlocal prevnot
             nonlocal prevoff
@@ -216,9 +221,15 @@ class LogTree:
 
 #            if len(self.nodes) == 6:
 #                print(alt, prevskip, skip)
+            if not alts:
+                alt.delta2 = (alt.delta2+nroot)-alt.key
+                nroot = alt.key
             alts.append(alt)
 
+        # TODO hm, root?
+        root = self.nodes[-1].root
         delta = 0
+        dkey = 0
         splice = +1 if type == 'create' else 0
         dsplice = -1 if type == 'delete' else 0
         off = len(self.nodes)-1
@@ -242,6 +253,7 @@ class LogTree:
                     self.iters2 += 1
                 #if alt.key+delta > lo and alt.key+delta+splice < hi:
                 if not alt.lt: # and alt.key+delta+splice < hi:
+                    ndkey = dkey + alt.delta2
                     if key >= alt.key+delta:
                         appendalt(
                             LogTree.Alt(
@@ -251,13 +263,16 @@ class LogTree:
                                 iweight=weight-alt.weight,
                                 off=off,
                                 skip=i+1,
-                                delta=delta),
+                                delta=delta,
+                                delta2=alt.key-nroot),
                             None, None, off, i)
                         weight = alt.weight
                         lo = alt.key+delta
                         delta += alt.delta
                         off = alt.off
                         skip = alt.skip
+                        dkey = ndkey
+                        root = root+alt.delta2
                         break
                     else:
                         appendalt(
@@ -268,11 +283,13 @@ class LogTree:
                                 iweight=alt.weight,
                                 off=alt.off,
                                 skip=alt.skip,
-                                delta=delta+alt.delta+splice+dsplice),
+                                delta=delta+alt.delta+splice+dsplice,
+                                delta2=alt.key-nroot),
                             off, i, off, i)
                         weight -= alt.weight
                         hi = alt.key+delta+splice
                 elif alt.lt: # and alt.key+delta > lo:
+                    ndkey = dkey - alt.delta2
                     if key < alt.key+delta+splice:
                         appendalt(LogTree.Alt(
                                 lt=False,
@@ -281,13 +298,16 @@ class LogTree:
                                 iweight=alt.weight,
                                 off=off,
                                 skip=i+1,
-                                delta=delta+splice+dsplice),
+                                delta=delta+splice+dsplice,
+                                delta2=alt.key-nroot),
                             None, None, off, i)
                         weight = alt.weight
                         hi = alt.key+delta+splice
                         delta += alt.delta
                         off = alt.off
                         skip = alt.skip
+                        dkey = ndkey
+                        root = root+alt.delta2
                         break
                     else:
                         appendalt(
@@ -298,7 +318,8 @@ class LogTree:
                                 iweight=weight-alt.weight,
                                 off=alt.off,
                                 skip=alt.skip,
-                                delta=delta+alt.delta),
+                                delta=delta+alt.delta,
+                                delta2=alt.key-nroot),
                             off, i, off, i)
                         weight -= alt.weight
                         lo = alt.key+delta
@@ -337,7 +358,10 @@ class LogTree:
                             skip=len(node.alts),
                             delta=delta+splice
                                 if node.key+delta >= key
-                                else delta),
+                                else delta,
+                            delta2=(node.key+delta+splice
+                                if node.key+delta >= key else
+                                key) - nroot),
                         None, None, off, len(node.alts))
                     self.count += 1
                 # omit deletes
@@ -352,7 +376,7 @@ class LogTree:
             #prevalt = None
 
         # append
-        self.nodes.append(LogTree.Node(key, value, type=type, alts=alts))
+        self.nodes.append(LogTree.Node(key, value, type=type, alts=alts, root=alts[0].key))
 
     def lookup(self, key):
         if not self.nodes:
@@ -361,6 +385,7 @@ class LogTree:
         delta = 0
         off = len(self.nodes)-1
         skip = 0
+        dkey = 0
         lo, hi = float('-inf'), float('inf')
         while True:
             if hasattr(self, 'iters'):
@@ -385,20 +410,26 @@ class LogTree:
                     self.iters2 += 1
                 #if alt.key+delta > lo and alt.key+delta < hi:
                 if not alt.lt: # and alt.key+delta < hi:
+                    ndkey = dkey + alt.delta2
                     if key >= alt.key+delta:
+                        #assert key >= ndkey, "%d >= %d, %d >= %d%+d\n%s" % (key, alt.key+delta, key, dkey, alt.delta2, self)
                         lo = alt.key+delta
                         delta += alt.delta
                         off = alt.off
                         skip = alt.skip
+                        dkey = ndkey
                         break
                     else:
                         hi = alt.key+delta
                 elif alt.lt: # and alt.key+delta > lo:
+                    ndkey = dkey - alt.delta2
                     if key < alt.key+delta:
+                        #assert ndkey <= alt.key
                         hi = alt.key+delta
                         delta += alt.delta
                         off = alt.off
                         skip = alt.skip
+                        dkey = ndkey
                         break
                     else:
                         lo = alt.key+delta
@@ -896,8 +927,8 @@ def main():
     tree.append(2, 'b')
     tree.append(3, 'c')
     tree.append(4, 'd')
-    tree.create(2, 'b\'')
-    tree.delete(3)
+    #tree.create(2, 'b\'')
+    #tree.delete(3)
     print(tree)
     print('1 = %s' % tree.lookup(1))
     print('2 = %s' % tree.lookup(2))
@@ -905,25 +936,25 @@ def main():
     print('4 = %s' % tree.lookup(4))
     print('5 = %s' % tree.lookup(5))
     print('traverse = %s' % list(tree.traverse()))
-    tree.remove(1)
-    tree.remove(2)
-    tree.remove(3)
-    tree.remove(4)
-    print(tree)
-    print('1 = %s' % tree.lookup(1))
-    print('2 = %s' % tree.lookup(2))
-    print('3 = %s' % tree.lookup(3))
-    print('4 = %s' % tree.lookup(4))
-    print('5 = %s' % tree.lookup(5))
-    print('traverse = %s' % list(tree.traverse()))
+#    tree.remove(1)
+#    tree.remove(2)
+#    tree.remove(3)
+#    tree.remove(4)
+#    print(tree)
+#    print('1 = %s' % tree.lookup(1))
+#    print('2 = %s' % tree.lookup(2))
+#    print('3 = %s' % tree.lookup(3))
+#    print('4 = %s' % tree.lookup(4))
+#    print('5 = %s' % tree.lookup(5))
+#    print('traverse = %s' % list(tree.traverse()))
 
     tree = LogTree()
     tree.append(4, 'd')
     tree.append(3, 'c')
     tree.append(2, 'b')
     tree.append(1, 'a')
-    tree.create(2, 'b\'')
-    tree.delete(3)
+    #tree.create(2, 'b\'')
+    #tree.delete(3)
     print(tree)
     print('1 = %s' % tree.lookup(1))
     print('2 = %s' % tree.lookup(2))
@@ -931,17 +962,17 @@ def main():
     print('4 = %s' % tree.lookup(4))
     print('5 = %s' % tree.lookup(5))
     print('traverse = %s' % list(tree.traverse()))
-    tree.remove(4)
-    tree.remove(3)
-    tree.remove(2)
-    tree.remove(1)
-    print(tree)
-    print('1 = %s' % tree.lookup(1))
-    print('2 = %s' % tree.lookup(2))
-    print('3 = %s' % tree.lookup(3))
-    print('4 = %s' % tree.lookup(4))
-    print('5 = %s' % tree.lookup(5))
-    print('traverse = %s' % list(tree.traverse()))
+#    tree.remove(4)
+#    tree.remove(3)
+#    tree.remove(2)
+#    tree.remove(1)
+#    print(tree)
+#    print('1 = %s' % tree.lookup(1))
+#    print('2 = %s' % tree.lookup(2))
+#    print('3 = %s' % tree.lookup(3))
+#    print('4 = %s' % tree.lookup(4))
+#    print('5 = %s' % tree.lookup(5))
+#    print('traverse = %s' % list(tree.traverse()))
 
     tree = LogTree()
     tree.append(3, 'a')
@@ -972,7 +1003,7 @@ def main():
 
     print("testing...")
     for n in [2, 3, 4, 10, 100, 1000]:
-        for case in ['appends', 'updates', 'removes']: #, 'creates2']: #, 'creates', 'deletes']:
+        for case in ['appends', 'updates']: #, 'removes']: #, 'creates2']: #, 'creates', 'deletes']:
             for order in ['in_order', 'reversed', 'random']:
                 if order == 'in_order':
                     xs = list(range(n))
