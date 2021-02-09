@@ -1,5 +1,4 @@
-#!/usr/bin/env python2
-# coding=utf-8
+#!/usr/bin/env python3
 
 import matplotlib
 matplotlib.use('SVG')
@@ -7,40 +6,33 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import string
 
-def main(input, output):
-    with open(input) as f:
-        # create graph
-        G = nx.DiGraph()
-        heights = {}
-        column_labels = {}
-        node_labels = {}
-        #edge_labels = {}
-        for line in f:
-            line = line.split(',')
-            if line[0] == 'node':
-                #G.add_node(int(line[1]))
-                column_labels[int(line[1])] = '%s: %s' % (line[2], line[3])
-                heights[int(line[1])] = 0
-            elif line[0] == 'alt':
-                heights[int(line[2])] = max(
-                    heights.get(int(line[2]), 0),
-                    int(line[1])+1)
-                G.add_node((int(line[2]), int(line[1])))
-                if int(line[1]) != 0:
-                    G.add_edge((int(line[2]), int(line[1])-1),
-                        (int(line[2]), int(line[1])))
-                G.add_edge((int(line[2]), int(line[1])), (int(line[7]), int(line[8])))
-                node_labels[(int(line[2]), int(line[1]))] = (
-                    u"%s%sw%s\n%+d" % (
-                        u"<" if int(line[3]) else u"≥",
-                        line[4], line[6],
-                        #line[4], line[5], #line[6],
-                        int(line[9])))
-#                if int(line[7]):
-#                    edge_labels[
-#                        ((int(line[2]), int(line[1])), (int(line[5]), 0))] = (
-#                            "%+d" % int(line[7]))
-                    
+from logtree import LogTree
+
+
+def render(tree, output):
+    # create graph
+    G = nx.DiGraph()
+    heights = {}
+    column_labels = {}
+    node_labels = {}
+    #edge_labels = {}
+
+    for i, node in enumerate(tree.nodes):
+        #G.add_node(i)
+        column_labels[i] = '%s: %s' % (node.key, node.value)
+        heights[i] = 0
+
+        for j, alt in enumerate(node.alts):
+            heights[i] = max(heights.get(i, 0), j+1)
+            G.add_node((i, j))
+            if j != 0:
+                G.add_edge((i, j-1), (i, j))
+            G.add_edge((i, j), (alt.off, alt.skip))
+            node_labels[(i, j)] = (
+                "%s%sw%s\n%+d" % (
+                    "<" if alt.lt else "≥",
+                    alt.key, alt.iweight,
+                    alt.delta))
 
         for k, v in heights.items():
             G.add_node((k, v))
@@ -48,31 +40,13 @@ def main(input, output):
                 G.add_edge((k, v-1), (k, v))
             node_labels[(k, v)] = column_labels[k]
 
-#        for i, node in enumerate(tree.nodes):
-#            G.add_node(i)
-#            for altlt, altkey, altoff, altdelta, _ in node.alts:
-#                G.add_edge(i, altoff)
-
-#    G.add_edge(1, 2)
-#    G.add_edge(1, 3)
-#    G.add_edge(1, 5)
-#    G.add_edge(2, 3)
-#    G.add_edge(3, 4)
-#    G.add_edge(4, 5)
-
-    # explicitly set positions
-    #pos = {1: (0, 0), 2: (-1, 0.3), 3: (2, 0.17), 4: (4, 0.255), 5: (5, 0.03)}
+   #pos = {1: (0, 0), 2: (-1, 0.3), 3: (2, 0.17), 4: (4, 0.255), 5: (5, 0.03)}
 
     #plt.tight_layout(pad=0)
     plt.figure(figsize=(20,7))
-    pos = {node: (2*node[0], heights[node[0]]-node[1]) for node in G.nodes}
-        
 
-#    pos = nx.spring_layout(G, k=10, seed=3113794652)
-#    for i in xrange(len(pos)):
-#        pos[i][0] = i*10
-   # print(pos)
-    
+    # assign positions
+    pos = {node: (2*node[0], heights[node[0]]-node[1]) for node in G.nodes}
 
     options = {
         "font_size": 12, #36,
@@ -87,13 +61,36 @@ def main(input, output):
     nx.draw_networkx_labels(G, pos, node_labels)
     #nx.draw_networkx_edge_labels(G, pos, edge_labels)
 
-    # Set margins for the axes so that nodes aren't clipped
     #ax = fig.add_axes([0, 0, 1, 1])
     ax = plt.gca()
     ax.margins(0, 0.1)
     ax.set_axis_off()
     plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
     plt.savefig(output, bbox_layout='tight', pad_inches=0)
+
+
+def main(output, action='append', *xs):
+    assert action in ['append', 'create']
+
+    if not xs:
+        if action == 'append':
+            # good for appends
+            xs = [3,8,6,1,7,4,5,2,0,9]
+        elif action == 'create':
+            # good for creates
+            xs = [0,1,1,0,3,2,3,1,0,9]
+    else:
+        xs = [int(x) for x in xs]
+
+    # create tree
+    tree = LogTree()
+    for i, x in enumerate(xs):
+        if action == 'append':
+            tree.append(x, string.ascii_lowercase[i])
+        elif action == 'create':
+            tree.create(x, string.ascii_lowercase[i])
+
+    render(tree, output)
 
 if __name__ == "__main__":
     import sys

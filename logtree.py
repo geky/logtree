@@ -972,7 +972,7 @@ def main():
 
     print("testing...")
     for n in [2, 3, 4, 10, 100, 1000]:
-        for case in ['appends', 'updates', 'removes', 'creates2']: #, 'creates', 'deletes']:
+        for case in ['appends', 'updates', 'removes']: #, 'creates2']: #, 'creates', 'deletes']:
             for order in ['in_order', 'reversed', 'random']:
                 if order == 'in_order':
                     xs = list(range(n))

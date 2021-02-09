@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 import matplotlib
 matplotlib.use('SVG')
@@ -44,7 +44,7 @@ def main(results, output):
         matplotlib.rc('axes', prop_cycle=matplotlib.style
             .library['seaborn-deep']['axes.prop_cycle'])
 
-        np.random.seed(map(ord, "hello"))
+        np.random.seed(sum(map(ord, "hello")))
 
         gs = gridspec.GridSpec(nrows=len(FIELDS), ncols=len(CASES),
                 wspace=0.25, hspace=0.25)
