@@ -36,7 +36,6 @@ done
 for case_ in \
         updates \
         removes \
-        creates \
         deletes
 do
     for order in \

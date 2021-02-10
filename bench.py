@@ -6,34 +6,39 @@ import random
 import itertools as it
 import sys
 
-def order_in_order(n, i=0):
-    return range(n)
+def order_in_order(n, case='appends'):
+    if case == 'deletes':
+        return list(it.repeat(0, n))
+    else:
+        return range(n)
 
-def order_reversed(n, i=0):
-    return reversed(range(n))
+def order_reversed(n, case='appends'):
+    if case == 'creates':
+        return list(it.repeat(0, n))
+    else:
+        return reversed(range(n))
 
-def order_random(n, i=0):
-    x = list(range(n))
-    random.shuffle(x)
-    return x
+def order_random(n, case='appends'):
+    if case == 'creates':
+        return list(random.randrange(x+1) for x in range(n))
+    elif case in {'deletes'}:
+        return list(random.randrange(x+1) for x in reversed(range(n)))
+    else:
+        x = list(range(n))
+        random.shuffle(x)
+        return x
 
-def order_in_order_then_reversed(n, i=0):
-    if i == 0:
+def order_in_order_then_reversed(n, case='appends'):
+    if case in {'updates', 'removes', 'deletes'}:
+        return order_reversed(n)
+    else:
+        return order_in_order(n)
+
+def order_reversed_then_in_order(n, case='appends'):
+    if case in {'updates', 'removes', 'deletes'}:
         return order_in_order(n)
     else:
         return order_reversed(n)
-
-def order_reversed_then_in_order(n, i=0):
-    if i == 0:
-        return order_reversed(n)
-    else:
-        return order_in_order(n)
-
-def order_repeated(n, i=0):
-    if i == 0:
-        return order_random(n)
-    else:
-        return it.repeat(0, n)
 
 ORDERS = {
     'random':                   order_random,
@@ -41,7 +46,6 @@ ORDERS = {
     'reversed':                 order_reversed,
     'in_order_then_reversed':   order_in_order_then_reversed,
     'reversed_then_in_order':   order_reversed_then_in_order,
-    'repeated':                 order_repeated,
 }
 
 def main(case, order, path, N=10000, step=10):
@@ -128,11 +132,11 @@ def main(case, order, path, N=10000, step=10):
                 iters = []
                 iters2 = []
                 tree = LogTree()
-                for i in ORDERS[order](n, 0):
+                for i in ORDERS[order](n):
                     tree.append(i, 'bad')
                     baseline[i] = 'bad'
 
-                for i in ORDERS[order](n, 1):
+                for i in ORDERS[order](n, 'updates'):
                     tree.iters = 0
                     tree.iters2 = 0
                     tree.append(i, repr(i))
@@ -152,11 +156,11 @@ def main(case, order, path, N=10000, step=10):
                 iters = []
                 iters2 = []
                 tree = LogTree()
-                for i in ORDERS[order](n, 0):
+                for i in ORDERS[order](n):
                     tree.append(i, 'bad')
                     baseline[i] = 'bad'
 
-                for i in ORDERS[order](n, 1):
+                for i in ORDERS[order](n, 'removes'):
                     tree.iters = 0
                     tree.iters2 = 0
                     tree.remove(i)
@@ -170,56 +174,51 @@ def main(case, order, path, N=10000, step=10):
                         print('failed %s + %s for n=%r, found %r' % (
                             case, order, n, i))
                         sys.exit(1)
-#                    traversal = list(tree.traverse())
-#                    if len(traversal) != 0:
-#                        print('failed %s + %s for n=%r, traversal %r' % (
-#                            case, order, n, traversal))
-#                        sys.exit(1)
 
             elif case == 'creates':
                 # Fun fact! Replicating this behavior with Python's built
-                # in data structures takes O(n^2), more than the actual
-                # data structure we're testing. So just trust that it works
-                # for now (note there are other tests in logtree.py)
+                # in data structures takes O(n^2), slower than the actual
+                # data structure we're testing. So we use special sequences
+                # to make sure the results are nice and packed. More tests
+                # in logtree.py
                 iters = []
                 iters2 = []
                 tree = LogTree()
-                for i in ORDERS[order](n, 0):
-                    tree.append(i, repr(i))
-
-                for i in ORDERS[order](n, 1):
+                for i in ORDERS[order](n, 'creates'):
                     tree.iters = 0
                     tree.iters2 = 0
-                    tree.create(i, '%d\'' % i)
+                    tree.create(i, repr(i))
                     iters.append(tree.iters)
                     iters2.append(tree.iters2)
                 heights = list(tree.heights())
 
+                for i in ORDERS[order](n):
+                    if tree.lookup(i) == None:
+                        print('failed %s + %s for n=%r, could not find %r' % (
+                            case, order, n, i))
+                        sys.exit(1)
+
             elif case == 'deletes':
-                # This is another funny one where replicating the behavior
-                # to verify the results would be O(n^2) without implementing
-                # a whole other data structure. Its more complicated because
-                # we can't just delete willy-nilly, we need to lookup to make
-                # sure what we're deleting exists. We don't count this against
-                # the runtime, since in practice a delete would be predicated
-                # on something existing. Note though this does mean the actual
-                # amount of deletes is on the order of ~1/2(?), so we double
-                # the amount in the tree to compensate.
+                # Similar workaround here with special sequences
                 iters = []
                 iters2 = []
                 tree = LogTree()
-                for i in ORDERS[order](2*n, 0):
+                for i in ORDERS[order](n, 'appends'):
                     tree.append(i, repr(i))
 
-                for i in ORDERS[order](2*n, 1):
-                    if not tree.lookup(i):
-                        continue
+                for i in ORDERS[order](n, 'deletes'):
                     tree.iters = 0
                     tree.iters2 = 0
                     tree.delete(i)
                     iters.append(tree.iters)
                     iters2.append(tree.iters2)
                 heights = list(tree.heights())
+
+                for i in ORDERS[order](n):
+                    if tree.lookup(i) != None:
+                        print('failed %s + %s for n=%r, found %r' % (
+                            case, order, n, i))
+                        sys.exit(1)
 
             else:
                 print("unknown case %r?" % case)

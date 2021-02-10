@@ -632,8 +632,9 @@ def main():
     print('traverse = ', list(tree.traverse()))
 
     print("testing...")
+    maxheight = 0
     for n in [2, 3, 4, 10, 100, 1000]:
-        for case in ['appends', 'updates', 'removes', 'creates', 'deletes']: #, 'creates2']: #, 'creates', 'deletes']:
+        for case in ['appends', 'updates', 'removes', 'creates', 'deletes']:
             for order in ['in_order', 'reversed', 'random']:
                 if order == 'in_order':
                     xs = list(range(n))
@@ -808,39 +809,9 @@ def main():
                                 baseline_traversal,
                                 '\n%s' % tree if n <= 10 else ''))
 
-                elif case == 'creates2':
-                    tree = LogTree()
-                    baseline = []
-                    for x in xs:
-                        # TODO get create working
-                        # test creates
-                        tree.create2(x, repr(x))
-                        baseline.insert(x, repr(x))
-                    for i in range(len(xs)):
-                        # testing lookups
-                        #print('lookup(%s)' % i, '=>', tree.lookup2(i), '~', baseline[i])
-                        assert tree.lookup2(i) == baseline[i], (
-                            "test %s %s %s FAILED\n"
-                            "tree.lookup(%s) => %s\n"
-                            "baseline[%s] => %s%s" % (
-                                case, order, n,
-                                i, tree.lookup2(i),
-                                i, baseline[i],
-                                '\n%s' % tree if n <= 10 else ''))
-#                    # TODO
-#                    # testing traversal
-#                    traversal = list(tree.traverse())
-#                    baseline_traversal = sorted(baseline.items())
-#                    assert traversal == baseline_traversal, (
-#                            "test %s %s %s FAILED\n"
-#                            "tree.traversal() => %s\n"
-#                            "sorted(baseline) => %s%s" % (
-#                                case, order, n,
-#                                traversal,
-#                                baseline_traversal,
-#                                '\n%s' % tree if n <= 10 else ''))
+                maxheight = max(maxheight, tree.height())
 
-    print('tree height = %s' % tree.height())
+    print('max tree height = %s' % maxheight)
     print('tests passed!')
 
 
