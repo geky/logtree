@@ -19,7 +19,11 @@ def render(tree, output):
 
     for i, node in enumerate(tree.nodes):
         #G.add_node(i)
-        column_labels[i] = '%s: %s\nr%s' % (node.key, node.value, node.root)
+        column_labels[i] = '%s%s: %s' % (
+            'c' if node.type == 'create' else
+            'd' if node.type == 'delete' else
+            '',
+            node.key, node.value)
         heights[i] = 0
 
         for j, alt in enumerate(node.alts):
@@ -29,10 +33,10 @@ def render(tree, output):
                 G.add_edge((i, j-1), (i, j))
             G.add_edge((i, j), (alt.off, alt.skip))
             node_labels[(i, j)] = (
-                "%s%s%+d\n%+d" % (
+                "%s%s%s" % (
                     "<" if alt.lt else "≥",
-                    alt.key, alt.delta2,
-                    alt.delta))
+                    alt.key,
+                    '%+d' % alt.delta if alt.delta else ''))
 
         for k, v in heights.items():
             G.add_node((k, v))
