@@ -5,6 +5,7 @@ matplotlib.use('SVG')
 import matplotlib.pyplot as plt
 import networkx as nx
 import string
+import random
 
 from logtree import LogTree
 
@@ -47,7 +48,7 @@ def render(tree, output):
    #pos = {1: (0, 0), 2: (-1, 0.3), 3: (2, 0.17), 4: (4, 0.255), 5: (5, 0.03)}
 
     #plt.tight_layout(pad=0)
-    plt.figure(figsize=(20,7))
+    plt.figure(figsize=(10 + len(tree.nodes), 7))
 
     # assign positions
     pos = {node: (2*node[0], heights[node[0]]-node[1]) for node in G.nodes}
@@ -74,9 +75,12 @@ def render(tree, output):
 
 
 def main(output, action='append', *xs):
-    assert action in ['append', 'create']
+    assert action in ['append', 'create', 'string']
 
-    if not xs:
+    if action == 'string':
+        xs = [(i, ord(x)) for i, x in enumerate(xs[0])]
+        random.shuffle(xs)
+    elif not xs:
         if action == 'append':
             # good for appends
             xs = [3,8,6,1,7,4,5,2,0,9]
@@ -89,10 +93,12 @@ def main(output, action='append', *xs):
     # create tree
     tree = LogTree()
     for i, x in enumerate(xs):
-        if action == 'append':
-            tree.append(x, string.ascii_lowercase[i])
+        if action == 'string':
+            tree.append(x[0], chr(x[1]))
+        elif action == 'append':
+            tree.append(x, string.ascii_lowercase[i%26])
         elif action == 'create':
-            tree.create(x, string.ascii_lowercase[i])
+            tree.create(x, string.ascii_lowercase[i%26])
 
     render(tree, output)
 
