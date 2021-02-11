@@ -256,8 +256,11 @@ class LogTree:
             for i, alt in it.islice(enumerate(node.alts), skip, None):
                 if hasattr(self, 'iters2'):
                     self.iters2 += 1
+                # TODO WE NEED TO TRIM HERE
+                # TODO Otherwise the height grows indefinitely!
                 #if alt.key+delta > lo and alt.key+delta+splice < hi:
                 if not alt.lt: # and alt.key+delta+splice < hi:
+                  if alt.key+delta+splice < hi:
                     ndkey = dkey + alt.delta2
                     if key >= alt.key+delta:
                         appendalt(
@@ -294,6 +297,7 @@ class LogTree:
                         weight -= alt.weight
                         hi = alt.key+delta+splice
                 elif alt.lt: # and alt.key+delta > lo:
+                  if alt.key+delta > lo:
                     ndkey = dkey - alt.delta2
                     if key < alt.key+delta+splice:
                         appendalt(LogTree.Alt(
