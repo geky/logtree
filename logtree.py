@@ -56,7 +56,7 @@ class LogTree:
         def __repr__(self):
             return 'LogTree.Alt(%s)' % self
 
-    def __init__(self, nodes=[], rotate_pred='crc_key_and_count'):
+    def __init__(self, nodes=[], rotate_pred='crc_key'):
         self.nodes = []
         self.count = 0
         for k, v in nodes:
@@ -131,7 +131,7 @@ class LogTree:
         prevoff = None
         prevskip = None
         prevdelta = None
-        def appendalt(alt, notoff, notskip, off, skip, delta, end=False):
+        def appendalt(alt, notoff, notskip, off, skip, delta, weight):
             #print(alt.key)
 
             # TODO wait we need this?
@@ -204,7 +204,12 @@ class LogTree:
                     #alt.off > prevaltoff and 
                     #off == alt.off and off == prevoff and skip == prevskip+1 and
                     value is not None and
-                    self.rotate_pred(alt, prevalt)):
+                    # +1 because we assume we're inserting, and +1 because we're
+                    # finding the the ceil(weight/2)
+                    prevalt.weight <= (weight+1)/2
+                    #True
+                    #self.rotate_pred(alt, prevalt)
+                    ):
                 #assert alt.lt == prevalt.lt
                 alts.pop()
 #                if len(self.nodes) == 6:
@@ -281,12 +286,12 @@ class LogTree:
                                 lt=True,
                                 key=alt.key+delta,
                                 weight=weight-alt.weight,
-                                iweight=weight-alt.weight,
+                                iweight=weight,
                                 off=off,
                                 skip=i+1,
                                 delta=delta,
                                 delta2=alt.key-nroot),
-                            None, None, off, i, delta)
+                            None, None, off, i, delta, weight)
                         weight = alt.weight
                         lo = alt.key+delta
                         delta += alt.delta
@@ -301,12 +306,12 @@ class LogTree:
                                 lt=False,
                                 key=alt.key+delta+splice+dsplice,
                                 weight=alt.weight,
-                                iweight=alt.weight,
+                                iweight=weight,
                                 off=alt.off,
                                 skip=alt.skip,
                                 delta=delta+alt.delta+splice+dsplice,
                                 delta2=alt.key-nroot),
-                            off, i, off, i, delta+splice+dsplice)
+                            off, i, off, i, delta+splice+dsplice, weight)
                         weight -= alt.weight
                         hi = alt.key+delta+splice
                 elif alt.lt: # and alt.key+delta > lo:
@@ -317,12 +322,12 @@ class LogTree:
                                 lt=False,
                                 key=alt.key+delta+splice+dsplice,
                                 weight=weight-alt.weight,
-                                iweight=alt.weight,
+                                iweight=weight,
                                 off=off,
                                 skip=i+1,
                                 delta=delta+splice+dsplice,
                                 delta2=alt.key-nroot),
-                            None, None, off, i, delta+splice+dsplice)
+                            None, None, off, i, delta+splice+dsplice, weight)
                         weight = alt.weight
                         hi = alt.key+delta+splice
                         delta += alt.delta
@@ -337,12 +342,12 @@ class LogTree:
                                 lt=True,
                                 key=alt.key+delta,
                                 weight=alt.weight,
-                                iweight=weight-alt.weight,
+                                iweight=weight,
                                 off=alt.off,
                                 skip=alt.skip,
                                 delta=delta+alt.delta,
                                 delta2=alt.key-nroot),
-                            off, i, off, i, delta)
+                            off, i, off, i, delta, weight)
                         weight -= alt.weight
                         lo = alt.key+delta
 
@@ -375,7 +380,7 @@ class LogTree:
                                 if node.key+delta >= key
                                 else key,
                             weight=1,
-                            iweight=1,
+                            iweight=weight,
                             off=off,
                             skip=len(node.alts),
                             delta=delta+splice
@@ -384,9 +389,8 @@ class LogTree:
                             delta2=(node.key+delta+splice
                                 if node.key+delta >= key else
                                 key) - nroot),
-                        None, None, off, len(node.alts), 0)
-                    if type == 'create':
-                        self.count += 1
+                        None, None, off, len(node.alts), 0, weight)
+                    self.count += 1
                 # omit deletes
                 if prevwasdeleted and not prevwasrotated:
                     alts = alts[:-1]
@@ -511,6 +515,7 @@ class LogTree:
 #                                off = alt.off
 #                                break
                     if not alt.lt: # and alt.key+delta < hi:
+                      if alt.key+delta < hi:
                         if key >= alt.key+delta:
                             lo = alt.key+delta
                             delta += alt.delta
@@ -520,6 +525,7 @@ class LogTree:
                         else:
                             hi = alt.key+delta
                     elif alt.lt: # and alt.key+delta > lo:
+                      if alt.key+delta > lo:
                         if key < alt.key+delta:
                             hi = alt.key+delta
                             delta += alt.delta
