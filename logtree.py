@@ -206,11 +206,14 @@ class LogTree:
                     value is not None and
                     # +1 because we assume we're inserting, and +1 because we're
                     # finding the the ceil(weight/2)
-                    prevalt.weight <= 0.25*(weight+1)
+                    #prevalt.weight <= 0.25*(weight+1)
                     #prevalt.weight <= (weight+1)/2
+                    prevalt.weight <= weight+1
                     #True
                     #self.rotate_pred(alt, prevalt)
                     ):
+                # TODO check these names
+                # LL and RR rotations
                 #assert alt.lt == prevalt.lt
                 alts.pop()
 #                if len(self.nodes) == 6:
