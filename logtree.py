@@ -17,8 +17,6 @@ class LogTree:
             self.value = value
             self.type = type
             self.alts = alts
-            self.delta2 = delta2
-            self.root = root
 
         def __str__(self, off=None):
             return '(%s%r: %r%s)%s' % (
@@ -34,7 +32,7 @@ class LogTree:
             return 'LogTree.Node%s' % self
 
     class Alt:
-        def __init__(self, lt, key, weight, iweight, off, skip, delta, delta2=0, rotate=False):
+        def __init__(self, lt, key, weight, iweight, off, skip, delta):
             self.lt = lt
             self.key = key
             self.weight = weight
@@ -43,8 +41,6 @@ class LogTree:
             self.off = off
             self.skip = skip
             self.delta = delta
-            self.rotate = rotate
-            self.delta2 = delta2
 
         def __str__(self):
             return '%s%s%s@%s.%s' % (
@@ -87,15 +83,9 @@ class LogTree:
                 binascii.crc32(struct.pack('<I', a.key))
                 > binascii.crc32(struct.pack('<I', b.key)))
         elif rotate_pred == 'crc_key_and_count':
-            def pred(a, b):
-                #print(a.key+self.count, b.key+self.count, self.count, binascii.crc32(struct.pack('<I', a.key+self.count)), binascii.crc32(struct.pack('<I', b.key+self.count)))
-                return (
-                    binascii.crc32(struct.pack('<I', a.key+self.count))
-                    > binascii.crc32(struct.pack('<I', b.key+self.count)))
-#            self.rotate_pred = lambda a, b: (
-#                binascii.crc32(struct.pack('<I', a.key+self.count))
-#                > binascii.crc32(struct.pack('<I', b.key+self.count)))
-            self.rotate_pred = pred
+            self.rotate_pred = lambda a, b: (
+                binascii.crc32(struct.pack('<I', a.key+self.count))
+                > binascii.crc32(struct.pack('<I', b.key+self.count)))
         else:
             self.rotate_pred = rotate_pred
 
@@ -107,39 +97,28 @@ class LogTree:
         return 'LogTree%s' % self
 
     def append(self, key, value, type=None):
-        #print('append')
         if not self.nodes:
             self.count += 1
-            self.nodes.append(LogTree.Node(key, value, type=type, alts=[], root=key))
+            self.nodes.append(LogTree.Node(key, value, type=type, alts=[]))
             return
 
-        # build alts
+        # build alts, in theory we only need a bounded number of these
+        # in RAM to rebalance correctly (in theory at least...)
         alts = []
+        altoffs = []
+        altskips = []
+        altdeltas = []
+        altweights = []
+
         weight = self.count
-        range = (0, self.count)
         prevwasdeleted = False
-        prevwasrotated = False
 
         # keep track of past alt to see if we should rotate
         #
         # Note we just access the alt end here, but we would
         # actually need to keep the previous alt in RAM. Annoying
         # but not a deal-breaker.
-        nroot = 0
-        prevalt = None
-        prevnot = (None, None)
-        prevoff = None
-        prevskip = None
-        prevdelta = None
-        def appendalt(alt, notoff, notskip, off, skip, delta, weight):
-            #print(alt.key)
-
-            # TODO wait we need this?
-            # skip if weight == 0?
-            # TODO this happens for some reason, is this a calculation mistake?
-#            if alt.weight == 0:
-#                return
-
+        def appendalt(alt, off, skip, delta, weight):
             if alt.lt:
                 assert alt.key <= key, (
                     "alt.lt pred does not hold %s <= %s, alt.lt = %s" % (
@@ -150,113 +129,42 @@ class LogTree:
                         alt.key, key, alt.lt))
 
             # rotate?
-            nonlocal nroot
-            nonlocal prevalt
-            nonlocal prevnot
-            nonlocal prevoff
-            nonlocal prevdelta
-            nonlocal prevskip
-            nonlocal prevwasrotated
-            prevnotoff, prevnotskip = prevnot
-#            if (prevaltkey and (
-#                    (alt.lt     and alt.key >= prevaltkey) or
-#                    (not alt.lt and alt.key <  prevaltkey)) and
-##                    (key >= alt.key and alt.key >= prevaltkey) or
-##                    (key < alt.key and alt.key < prevaltkey)) and
-#                    alt.off > prevaltoff and
-#                    # TODO is this acceptable?
-#                    #prevnotoff == alt.off and
-#                    value is not None and
-#                    self.rotate_pred((alt.key, alt.off),
-#                        (prevaltkey, prevaltoff))):
-#                #print(prevnotoff, prevnotskip, '~', alt.off, alt.skip)
-#                assert prevnotoff > alt.off or (prevnotoff == alt.off and prevnotskip < alt.skip), (
-#                    "prevnotskip bad?\n"
-#                    "prevnotoff=%s >= alt.off=%s\n"
-#                    "prevnotskip=%s < alt.skip=%s\n\n%s\n%s\n%s %s" % (
-#                    prevnotoff, alt.off, prevnotskip, alt.skip,
-#                    self.nodes[prevnotoff].__str__(prevnotoff),
-#                    self.nodes[alt.off].__str__(alt.off), key, alts))
-#
-#                #print('rotate %s %s' % (prevaltkey, alt.key))
-#                alts.pop()
-##                alt.off = prevnotoff            
-##                alt.skip = prevnotskip
-##                alt.skip -= 1
-##                while alt.skip > 0 and self.nodes[alt.off].alts[alt.skip][1] != prevaltkey:
-##                    print(self.nodes[alt.off], alt.skip, '?', prevaltkey, alt.key)
-##                    alt.skip -= 1
-#                #alt.skip = alt.skip-1
-#                alt.skip = 0
-#                prevwasrotated = True
-#                # can only go back once with bounded RAM
-#                prev = (None, None, None, None, None)
-#                prevnot = (None, None)
-#            else:
-#                prevwasrotated = False
-#                prev = (alt.lt, alt.key, alt.off, alt.skip, alt.delta)
-#                prevnot = (notoff, notskip)
-
-            if (prevalt and alt.lt == prevalt.lt and
-#(
-#                    (alt.lt     and alt.key >= prevalt.key) or
-#                    (not alt.lt and alt.key <  prevalt.key)) and
-                    #alt.off > prevaltoff and 
-                    #off == alt.off and off == prevoff and skip == prevskip+1 and
+            if (len(alts) >= 1 and alt.lt == alts[-1].lt and
                     value is not None and
-                    # +1 because we assume we're inserting, and +1 because we're
-                    # finding the the ceil(weight/2)
-                    #prevalt.weight <= 0.25*(weight+1)
-                    #prevalt.weight <= (weight+1)/2
-                    prevalt.weight <= weight+1
-                    #True
-                    #self.rotate_pred(alt, prevalt)
-                    ):
+                    alts[-1].weight <= weight+1):
                 # TODO check these names
                 # LL and RR rotations
-                #assert alt.lt == prevalt.lt
+                alt.off = altoffs[-1]
+                alt.skip = altskips[-1]
+                alt.delta = altdeltas[-1]
+                alt.weight += alts[-1].weight
                 alts.pop()
-#                if len(self.nodes) == 6:
-#                    print('pop')
-#                    if len(self.nodes) == 6:
-#                        print(alt, prevskip, skip)
-#                alt.off = prevnotoff
-#                alt.skip = prevnotskip
-                #alt.skip = 0
-#                alt.skip -= 1
-#                assert alt.skip-1 == prevaltskip, (
-#                    "not expected skip? %d-1 == %d" % (alt.skip, prevaltskip))
-                #print('rotating %s <-> %s' % (alt.key, prevaltkey))
-                alt.off = prevoff
-                alt.skip = prevskip
-                alt.delta = prevdelta
-                alt.weight += prevalt.weight
-                #alt.delta = prevalt.delta
-                # can only go back once with bounded RAM
-                prevalt = None
-                prevnot = (None, None)
-                #prevwasrotated = True
+                alts.append(alt)
+#            elif (len(alts) >= 3 and 
+#                    # TODO make sure we aren't backtracking?
+#                    alts[-2].lt == alt.lt and alts[-2].lt != alts[-1].lt and
+#                    value is not None and
+#                    alts[-2].weight <= (alts[-1].weight+weight+1)/2
+#                # TODO check these names
+#                # LR and RL rotations
+#                alt.off = alts[-2].off
+#                alt.skip = alts[-2].skip
+#                alt.
+#                alts.pop(-2)
+#                alts.append(alt)
+#                altoffs.append(alt.off)
+#                altskips.append(alt.skip)
+#                altdeltas.append(alt.delta)
+#                altweights.append(alt.weight)
             else:
-                #assert not prevalt or alt.lt != prevalt.lt or value is None or not self.rotate_pred(alt, prevalt)
-                # TODO can we actually do more than one?
-                prevalt = alt
-                prevnot = (notoff, notskip)
-                prevoff = off
-                prevskip = skip
-                prevdelta = delta
-                #prevwasrotated = False
-
-#            if len(self.nodes) == 6:
-#                print(alt, prevskip, skip)
-            if not alts:
-                alt.delta2 = (alt.delta2+nroot)-alt.key
-                nroot = alt.key
-            alts.append(alt)
+                alts.append(alt)
+                altoffs.append(off)
+                altskips.append(skip)
+                altdeltas.append(delta)
+                altweights.append(weight)
 
         # TODO hm, root?
-        root = self.nodes[-1].root
         delta = 0
-        dkey = 0
         splice = +1 if type == 'create' else 0
         dsplice = -1 if type == 'delete' else 0
         off = len(self.nodes)-1
@@ -267,113 +175,75 @@ class LogTree:
                 self.iters += 1
 
             node = self.nodes[off]
-            #prev = (None, None, None, None, None)
-#            if node.key+delta == key and type != 'create':
-#                if prevwasdeleted:
-#                    alts = alts[:-1]
-#                # found key
-#                break
 
-            #print(skip)
             for i, alt in it.islice(enumerate(node.alts), skip, None):
                 if hasattr(self, 'iters2'):
                     self.iters2 += 1
-                # TODO WE NEED TO TRIM HERE
-                # TODO Otherwise the height grows indefinitely!
-                #if alt.key+delta > lo and alt.key+delta+splice < hi:
-                if not alt.lt: # and alt.key+delta+splice < hi:
-                  if alt.key+delta+splice < hi:
-                    ndkey = dkey + alt.delta2
-                    if key >= alt.key+delta:
-                        appendalt(
-                            LogTree.Alt(
-                                lt=True,
-                                key=alt.key+delta,
-                                weight=weight-alt.weight,
-                                iweight=weight,
-                                off=off,
-                                skip=i+1,
-                                delta=delta,
-                                delta2=alt.key-nroot),
-                            None, None, off, i, delta, weight)
-                        weight = alt.weight
-                        lo = alt.key+delta
-                        delta += alt.delta
-                        off = alt.off
-                        skip = alt.skip
-                        dkey = ndkey
-                        root = root+alt.delta2
-                        break
-                    else:
-                        appendalt(
-                            LogTree.Alt(
-                                lt=False,
-                                key=alt.key+delta+splice+dsplice,
-                                weight=alt.weight,
-                                iweight=weight,
-                                off=alt.off,
-                                skip=alt.skip,
-                                delta=delta+alt.delta+splice+dsplice,
-                                delta2=alt.key-nroot),
-                            off, i, off, i, delta+splice+dsplice, weight)
-                        weight -= alt.weight
-                        hi = alt.key+delta+splice
-                elif alt.lt: # and alt.key+delta > lo:
-                  if alt.key+delta > lo:
-                    ndkey = dkey - alt.delta2
-                    if key < alt.key+delta+splice:
-                        appendalt(LogTree.Alt(
-                                lt=False,
-                                key=alt.key+delta+splice+dsplice,
-                                weight=weight-alt.weight,
-                                iweight=weight,
-                                off=off,
-                                skip=i+1,
-                                delta=delta+splice+dsplice,
-                                delta2=alt.key-nroot),
-                            None, None, off, i, delta+splice+dsplice, weight)
-                        weight = alt.weight
-                        hi = alt.key+delta+splice
-                        delta += alt.delta
-                        off = alt.off
-                        skip = alt.skip
-                        dkey = ndkey
-                        root = root+alt.delta2
-                        break
-                    else:
-                        appendalt(
-                            LogTree.Alt(
-                                lt=True,
-                                key=alt.key+delta,
-                                weight=alt.weight,
-                                iweight=weight,
-                                off=alt.off,
-                                skip=alt.skip,
-                                delta=delta+alt.delta,
-                                delta2=alt.key-nroot),
-                            off, i, off, i, delta, weight)
-                        weight -= alt.weight
-                        lo = alt.key+delta
 
-
-#                    if key >= alt.key+delta:
-#                        lo = alt.key+delta
-#                        if not alt.lt: # alt.key > node.key:
-#                            appendalt((True, alt.key+delta, off, delta))
-#                            delta += alt.delta
-#                            off = alt.off
-#                            break
-#                        else:
-#                            appendalt((True, alt.key+delta, alt.off, delta+alt.delta))
-#                    elif key < alt.key+delta+splice:
-#                        hi = alt.key+delta+splice
-#                        if alt.lt: # alt.key <= node.key:
-#                            appendalt((False, alt.key+delta+splice+dsplice, off, delta+splice+dsplice))
-#                            delta += alt.delta
-#                            off = alt.off
-#                            break
-#                        else:
-#                            appendalt((False, alt.key+delta+splice+dsplice, alt.off, delta+alt.delta+splice+dsplice))
+                if not alt.lt:
+                    # need to trim, otherwise height grows indefinitely
+                    if alt.key+delta+splice < hi:
+                      if key >= alt.key+delta:
+                          appendalt(
+                              LogTree.Alt(
+                                  lt=True,
+                                  key=alt.key+delta,
+                                  weight=weight-alt.weight,
+                                  iweight=weight,
+                                  off=off,
+                                  skip=i+1,
+                                  delta=delta),
+                              off, i, delta, weight)
+                          weight = alt.weight
+                          lo = alt.key+delta
+                          delta += alt.delta
+                          off = alt.off
+                          skip = alt.skip
+                          break
+                      else:
+                          appendalt(
+                              LogTree.Alt(
+                                  lt=False,
+                                  key=alt.key+delta+splice+dsplice,
+                                  weight=alt.weight,
+                                  iweight=weight,
+                                  off=alt.off,
+                                  skip=alt.skip,
+                                  delta=delta+alt.delta+splice+dsplice),
+                              off, i, delta+splice+dsplice, weight)
+                          weight -= alt.weight
+                          hi = alt.key+delta+splice
+                elif alt.lt:
+                    if alt.key+delta > lo:
+                      if key < alt.key+delta+splice:
+                          appendalt(LogTree.Alt(
+                                  lt=False,
+                                  key=alt.key+delta+splice+dsplice,
+                                  weight=weight-alt.weight,
+                                  iweight=weight,
+                                  off=off,
+                                  skip=i+1,
+                                  delta=delta+splice+dsplice),
+                              off, i, delta+splice+dsplice, weight)
+                          weight = alt.weight
+                          hi = alt.key+delta+splice
+                          delta += alt.delta
+                          off = alt.off
+                          skip = alt.skip
+                          break
+                      else:
+                          appendalt(
+                              LogTree.Alt(
+                                  lt=True,
+                                  key=alt.key+delta,
+                                  weight=alt.weight,
+                                  iweight=weight,
+                                  off=alt.off,
+                                  skip=alt.skip,
+                                  delta=delta+alt.delta),
+                              off, i, delta, weight)
+                          weight -= alt.weight
+                          lo = alt.key+delta
             else:
                 if node.key+delta != key or type == 'create' or type == 'create2':
                     # did not find key, split leaf?
@@ -389,22 +259,16 @@ class LogTree:
                             skip=len(node.alts),
                             delta=delta+splice
                                 if node.key+delta >= key
-                                else delta,
-                            delta2=(node.key+delta+splice
-                                if node.key+delta >= key else
-                                key) - nroot),
-                        None, None, off, len(node.alts), 0, weight)
+                                else delta),
+                        off, len(node.alts), 0, weight)
                     self.count += 1
                 # omit deletes
-                if prevwasdeleted and not prevwasrotated:
+                if prevwasdeleted:
                     alts = alts[:-1]
                 break
 
-            # TODO hm, can we drop deletes over time?
-            # TODO create 0, 1, 2, delete 1, create 2, 3 ends up with
-            # extra node?
+            # TODO is there a better way to do this?
             prevwasdeleted = node.value is None and node.type != 'delete'
-            #prevalt = None
 
         # append
         self.nodes.append(LogTree.Node(key, value, type=type, alts=alts))
@@ -416,8 +280,6 @@ class LogTree:
         delta = 0
         off = len(self.nodes)-1
         skip = 0
-        dkey = 0
-        lo, hi = float('-inf'), float('inf')
         while True:
             if hasattr(self, 'iters'):
                 self.iters += 1
@@ -428,62 +290,25 @@ class LogTree:
                 return node.value
 
             for alt in it.islice(node.alts, skip, None):
-#                print(
-#                    '%s?\n'
-#                    '    %s[%s]\n'
-#                    '    %s < (%s%s%+d?) ≤ %s -> %s[%s]' % (
-#                        key, node.__str__(off), skip,
-#                        lo, '<' if alt.lt else '≥', alt.key, delta, hi,
-#                        alt.off, alt.skip))
-
-                #print('%s? %s@%s %s..%s %+d :: %s%s%+d' % (key, node.key, off, lo, hi, delta, '<' if alt.lt else '≥', alt.key, delta))
                 if hasattr(self, 'iters2'):
                     self.iters2 += 1
-                #if alt.key+delta > lo and alt.key+delta < hi:
-                if not alt.lt: # and alt.key+delta < hi:
-                    ndkey = dkey + alt.delta2
+
+                if not alt.lt:
                     if key >= alt.key+delta:
-                        #assert key >= ndkey, "%d >= %d, %d >= %d%+d\n%s" % (key, alt.key+delta, key, dkey, alt.delta2, self)
-                        lo = alt.key+delta
                         delta += alt.delta
                         off = alt.off
                         skip = alt.skip
-                        dkey = ndkey
                         break
-                    else:
-                        hi = alt.key+delta
-                elif alt.lt: # and alt.key+delta > lo:
-                    ndkey = dkey - alt.delta2
+                elif alt.lt:
                     if key < alt.key+delta:
-                        #assert ndkey <= alt.key
-                        hi = alt.key+delta
                         delta += alt.delta
                         off = alt.off
                         skip = alt.skip
-                        dkey = ndkey
                         break
-                    else:
-                        lo = alt.key+delta
-#
-#
-#                    if key >= alt.key+delta:
-#                        lo = alt.key+delta
-#                        if not alt.lt: # alt.key > node.key:
-#                            delta += alt.delta
-#                            off = alt.off
-#                            break
-#                    elif key < alt.key+delta:
-#                        hi = alt.key+delta
-#                        if alt.lt: # alt.key <= node.key:
-#                            delta += alt.delta
-#                            off = alt.off
-#                            break
             else:
                 # did not find key
                 return None
 
-    # TODO scrutinize this more?
-    # TODO bring up to date with delete impl
     def traverse(self):
         if not self.nodes:
             return
@@ -505,41 +330,29 @@ class LogTree:
                 for alt in it.islice(node.alts, skip, None):
                     if hasattr(self, 'iters2'):
                         self.iters2 += 1
-#                    if alt.key+delta > lo and alt.key+delta < hi:
-#                        if key >= alt.key+delta:
-#                            lo = alt.key+delta
-#                            if not alt.lt: # alt.key > node.key:
-#                                delta += alt.delta
-#                                off = alt.off
-#                                break
-#                        elif key < alt.key+delta:
-#                            hi = alt.key+delta
-#                            if alt.lt: # alt.key <= node.key:
-#                                delta += alt.delta
-#                                off = alt.off
-#                                break
-                    if not alt.lt: # and alt.key+delta < hi:
-                      if alt.key+delta < hi:
-                        if key >= alt.key+delta:
-                            lo = alt.key+delta
-                            delta += alt.delta
-                            off = alt.off
-                            skip = alt.skip
-                            break
-                        else:
-                            hi = alt.key+delta
+
+                    if not alt.lt:
+                        # need to trim, otherwise we can end up with
+                        # outdated keys
+                        if alt.key+delta < hi:
+                          if key >= alt.key+delta:
+                              lo = alt.key+delta
+                              delta += alt.delta
+                              off = alt.off
+                              skip = alt.skip
+                              break
+                          else:
+                              hi = alt.key+delta
                     elif alt.lt: # and alt.key+delta > lo:
-                      if alt.key+delta > lo:
-                        if key < alt.key+delta:
-                            hi = alt.key+delta
-                            delta += alt.delta
-                            off = alt.off
-                            skip = alt.skip
-                            break
-                        else:
-                            lo = alt.key+delta
-                    #else:
-                    #    print('huh %s? %s < %s%+d ≤ %s (%s in %s)' % (key, lo, alt.key, delta, hi, skip, len(node.alts)))
+                        if alt.key+delta > lo:
+                          if key < alt.key+delta:
+                              hi = alt.key+delta
+                              delta += alt.delta
+                              off = alt.off
+                              skip = alt.skip
+                              break
+                          else:
+                              lo = alt.key+delta
                 else:
                     key = hi
                     # skip deletes
