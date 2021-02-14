@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import string
 import random
+import itertools as it
+import sys
 
 from logtree import LogTree
 
@@ -75,31 +77,41 @@ def render(tree, output):
     plt.savefig(output, bbox_layout='tight', pad_inches=0)
 
 
-def main(output, action='append', *xs):
-    assert action in ['append', 'create', 'string']
-
-    if action == 'string':
-        xs = [(i, ord(x)) for i, x in enumerate(xs[0])]
-        random.shuffle(xs)
-    elif not xs:
-        if action == 'append':
-            # good for appends
-            xs = [3,8,6,1,7,4,5,2,0,9]
-        elif action == 'create':
-            # good for creates
-            xs = [0,1,1,0,3,2,3,1,0,9]
-    else:
-        xs = [int(x) for x in xs]
+def main(output, *xs):
+    if xs in [(), ('append',)]:
+        # good for appends
+        xs = [3,8,6,1,7,4,5,2,0,9]
+    elif xs in [('create',)]:
+        # good for creates
+        xs = [0,1,1,0,3,2,3,1,0,9]
 
     # create tree
     tree = LogTree()
-    for i, x in enumerate(xs):
+    action = 'append'
+    alphas = it.cycle(string.ascii_lowercase)
+    nums = it.count()
+    for x in xs:
+        if action != 'string':
+            try:
+                _ = int(x)
+            except ValueError:
+                action = x
+                continue
+
         if action == 'string':
-            tree.append(x[0], chr(x[1]))
+            for c in x:
+                tree.append(next(nums), c)
         elif action == 'append':
-            tree.append(x, string.ascii_lowercase[i%26])
+            tree.append(int(x), next(alphas))
         elif action == 'create':
-            tree.create(x, string.ascii_lowercase[i%26])
+            tree.create(int(x), next(alphas))
+        elif action == 'lookup':
+            tree.lookup(int(x))
+        elif action == 'traverse':
+            tree.traverse()
+        else:
+            print('unknown action %r' % action)
+            sys.exit(1)
 
     render(tree, output)
 
