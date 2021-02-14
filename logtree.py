@@ -32,7 +32,7 @@ class LogTree:
             return 'LogTree.Node%s' % self
 
     class Alt:
-        def __init__(self, lt, key, weight, iweight, off, skip, delta):
+        def __init__(self, lt, key, weight, off, skip, delta, iweight=0):
             self.lt = lt
             self.key = key
             self.weight = weight
@@ -148,18 +148,25 @@ class LogTree:
                 alt.skip = altskips[-1]
                 alt.delta = altdeltas[-1]
                 alt.weight += alts[-1].weight
+                alt.iweight = alts[-1].weight+weight+1
                 alts[-1] = alt
                 #print('R -> %s' % alts[-1])
-            elif (len(alts) >= 3 and 
+            elif (len(alts) >= 2 and 
                     # TODO make sure we aren't backtracking?
                     alts[-2].lt == alt.lt and alts[-2].lt != alts[-1].lt and
                     # TODO do we really need to check for removes?
                     value is not None and
-                    alts[-2].weight <= (alts[-1].weight+weight+1)/2):
+                    alts[-2].weight < alts[-1].weight+weight+1):
                 #print('R %s %s %s' % (alts[-2], alts[-1], alt))
                 # TODO I don't think this is quite the right rotation
                 # TODO check these names
                 # LR and RL rotations
+                alt.off = altoffs[-2]
+                alt.skip = altskips[-2]
+                alt.delta = altdeltas[-2]
+                alt.weight += alts[-2].weight
+                alt.iweight = alts[-2].weight+alts[-1].weight+weight+1
+                alts[-2] = alt
 #                alts[-2], alts[-1] = alts[-1], alts[-2]
 #                altoffs[-2], altoffs[-1] = altoffs[-1], altoffs[-2]
 #                altskips[-2], altskips[-1] = altskips[-1], altskips[-2]
@@ -178,6 +185,7 @@ class LogTree:
                 #print('R -> %s %s' % (alts[-2], alts[-1]))
             else:
                 #print('A %s' % alt)
+                alt.iweight = weight+1
                 alts.append(alt)
                 altoffs.append(off)
                 altskips.append(skip)
@@ -210,7 +218,6 @@ class LogTree:
                                     lt=True,
                                     key=alt.key+delta,
                                     weight=weight-alt.weight,
-                                    iweight=weight,
                                     off=off,
                                     skip=i+1,
                                     delta=delta),
@@ -232,7 +239,6 @@ class LogTree:
                                     lt=False,
                                     key=alt.key+delta+splice+dsplice,
                                     weight=alt.weight,
-                                    iweight=weight,
                                     off=alt.off,
                                     skip=alt.skip,
                                     delta=delta+alt.delta+splice+dsplice),
@@ -246,7 +252,6 @@ class LogTree:
                                     lt=False,
                                     key=alt.key+delta+splice+dsplice,
                                     weight=weight-alt.weight,
-                                    iweight=weight,
                                     off=off,
                                     skip=i+1,
                                     delta=delta+splice+dsplice),
@@ -264,7 +269,6 @@ class LogTree:
                                     lt=True,
                                     key=alt.key+delta,
                                     weight=alt.weight,
-                                    iweight=weight,
                                     off=alt.off,
                                     skip=alt.skip,
                                     delta=delta+alt.delta),
@@ -281,7 +285,6 @@ class LogTree:
                                 if node.key+delta >= key
                                 else key,
                             weight=1,
-                            iweight=weight,
                             off=off,
                             skip=len(node.alts),
                             delta=delta+splice
