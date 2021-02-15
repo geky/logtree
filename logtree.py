@@ -32,7 +32,7 @@ class LogTree:
             return 'LogTree.Node%s' % self
 
     class Alt:
-        def __init__(self, lt, key, weight, off, skip, delta, iweight=0):
+        def __init__(self, lt, key, weight, off, skip, delta, random, iweight=0):
             self.lt = lt
             self.key = key
             self.weight = weight
@@ -41,6 +41,7 @@ class LogTree:
             self.off = off
             self.skip = skip
             self.delta = delta
+            self.random = random
 
         def __str__(self):
             return '%s%s%s@%s.%s' % (
@@ -140,7 +141,9 @@ class LogTree:
             if (len(alts) >= 1 and alt.lt == alts[-1].lt and
                     # TODO do we really need to check for removes?
                     value is not None and
-                    alts[-1].weight < weight+1):
+                    alts[-1].random < alt.random
+                    #alts[-1].weight < weight+1
+                    ):
                 #print('R %s %s' % (alts[-1], alt))
                 # TODO check these names
                 # LL and RR rotations
@@ -156,7 +159,9 @@ class LogTree:
                     alts[-2].lt == alt.lt and alts[-2].lt != alts[-1].lt and
                     # TODO do we really need to check for removes?
                     value is not None and
-                    alts[-2].weight < alts[-1].weight+weight+1):
+                    alts[-1].random < alt.random
+                    #alts[-2].weight < alts[-1].weight+weight+1
+                    ):
                 #print('R %s %s %s' % (alts[-2], alts[-1], alt))
                 # TODO I don't think this is quite the right rotation
                 # TODO check these names
@@ -220,7 +225,8 @@ class LogTree:
                                     weight=weight-alt.weight,
                                     off=off,
                                     skip=i+1,
-                                    delta=delta),
+                                    delta=delta,
+                                    random=alt.random),
                                 off, i, delta, weight)
                             weight = alt.weight
                         #else:
@@ -241,7 +247,8 @@ class LogTree:
                                     weight=alt.weight,
                                     off=alt.off,
                                     skip=alt.skip,
-                                    delta=delta+alt.delta+splice+dsplice),
+                                    delta=delta+alt.delta+splice+dsplice,
+                                    random=alt.random),
                                 off, i, delta+splice+dsplice, weight)
                             weight -= alt.weight
                         hi = min(hi, alt.key+delta+splice)
@@ -254,7 +261,8 @@ class LogTree:
                                     weight=weight-alt.weight,
                                     off=off,
                                     skip=i+1,
-                                    delta=delta+splice+dsplice),
+                                    delta=delta+splice+dsplice,
+                                    random=alt.random),
                                 off, i, delta+splice+dsplice, weight)
                             weight = alt.weight
                         hi = min(hi, alt.key+delta+splice)
@@ -271,7 +279,8 @@ class LogTree:
                                     weight=alt.weight,
                                     off=alt.off,
                                     skip=alt.skip,
-                                    delta=delta+alt.delta),
+                                    delta=delta+alt.delta,
+                                    random=alt.random),
                                 off, i, delta, weight)
                             weight -= alt.weight
                         lo = max(lo, alt.key+delta)
@@ -289,7 +298,8 @@ class LogTree:
                             skip=len(node.alts),
                             delta=delta+splice
                                 if node.key+delta >= key
-                                else delta),
+                                else delta,
+                            random=random.random()),
                         off, len(node.alts), 0, weight)
                     self.count += 1
                 # omit deletes
