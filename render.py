@@ -19,6 +19,7 @@ def render(tree, output):
     column_labels = {}
     node_labels = {}
     #edge_labels = {}
+    edge_colors = []
 
     for i, node in enumerate(tree.nodes):
         #G.add_node(i)
@@ -32,20 +33,20 @@ def render(tree, output):
         for j, alt in enumerate(node.alts):
             heights[i] = max(heights.get(i, 0), j+1)
             G.add_node((i, j))
-            if j != 0:
-                G.add_edge((i, j-1), (i, j))
-            G.add_edge((i, j), (alt.off, alt.skip))
+#            if j != 0:
+#                G.add_edge((i, j-1), (i, j), color='b')
+            G.add_edge((i, j), (i, j+1), color=alt.colors[0])
+            G.add_edge((i, j), (alt.off, alt.skip), color=alt.colors[1])
             node_labels[(i, j)] = (
-                "%s%s%s\nw%s/%s" % (
+                "%s%s%s" % (
                     "<" if alt.lt else "≥",
                     alt.key,
-                    '%+d' % alt.delta if alt.delta else '',
-                    alt.weight, alt.iweight))
+                    '%+d' % alt.delta if alt.delta else ''))
 
         for k, v in heights.items():
             G.add_node((k, v))
-            if v != 0:
-                G.add_edge((k, v-1), (k, v))
+#            if v != 0:
+#                G.add_edge((k, v-1), (k, v), color='b')
             node_labels[(k, v)] = column_labels[k]
 
    #pos = {1: (0, 0), 2: (-1, 0.3), 3: (2, 0.17), 4: (4, 0.255), 5: (5, 0.03)}
@@ -65,7 +66,9 @@ def render(tree, output):
         "width": 2,
         "with_labels": False,
     }
-    nx.draw_networkx(G, pos, **options)
+    edges = G.edges()
+    edge_colors = ['#c44e52' if G[u][v]['color'] == 'r' else 'black' for u,v in edges]
+    nx.draw_networkx(G, pos, **options, edges=edges, edge_color=edge_colors)
     nx.draw_networkx_labels(G, pos, node_labels)
     #nx.draw_networkx_edge_labels(G, pos, edge_labels)
 
@@ -89,7 +92,6 @@ def main(output, *xs):
     tree = LogTree()
     action = 'append'
     alphas = it.cycle(string.ascii_lowercase)
-    nums = it.count()
     for x in xs:
         if action != 'string':
             try:
@@ -99,8 +101,10 @@ def main(output, *xs):
                 continue
 
         if action == 'string':
-            for c in x:
-                tree.append(next(nums), c)
+            x = list(enumerate(x))
+            random.shuffle(x)
+            for i, c in x:
+                tree.append(i, c)
         elif action == 'append':
             tree.append(int(x), next(alphas))
         elif action == 'create':

@@ -32,7 +32,8 @@ class LogTree:
             return 'LogTree.Node%s' % self
 
     class Alt:
-        def __init__(self, lt, key, weight, off, skip, delta, random, iweight=0):
+        def __init__(self, lt, key, weight, off, skip, delta, random,
+                colors=('b','b'), iweight=0):
             self.lt = lt
             self.key = key
             self.weight = weight
@@ -42,6 +43,7 @@ class LogTree:
             self.skip = skip
             self.delta = delta
             self.random = random
+            self.colors = colors
 
         def __str__(self):
             return '%s%s%s@%s.%s' % (
@@ -137,30 +139,62 @@ class LogTree:
                     "alt.lt pred does not hold %s >= %s, alt.lt = %s" % (
                         alt.key, key, alt.lt))
 
+            # recolor?
+            if alt.colors == ('r','r'):
+                alt.colors = ('b','b')
+                if len(alts) >= 1:
+                    alts[-1].colors = ('r', alts[-1].colors[1])
+
             # rotate?
-            if (len(alts) >= 1 and alt.lt == alts[-1].lt and
-                    # TODO do we really need to check for removes?
+#            if (len(alts) >= 1 and alt.lt == alts[-1].lt and
+#                    # TODO do we really need to check for removes?
+#                    value is not None and
+#                    False
+#                    #alts[-1].random < alt.random
+#                    #alts[-1].weight < weight+1
+#                    ):
+#                #print('R %s %s' % (alts[-1], alt))
+#                # TODO check these names
+#                # LL and RR rotations
+#                alt.off = altoffs[-1]
+#                alt.skip = altskips[-1]
+#                alt.delta = altdeltas[-1]
+#                alt.weight += alts[-1].weight
+#                alt.iweight = alts[-1].weight+weight+1
+#                alts[-1] = alt
+#                #print('R -> %s' % alts[-1])
+            if (len(alts) >= 2 and
+                    alts[-2].lt == alts[-1].lt and
                     value is not None and
-                    alts[-1].random < alt.random
-                    #alts[-1].weight < weight+1
+                    #False
+                    #alts[-2].random < alts[-1].random
+                    alts[-2].colors[0] == 'r' and alts[-1].colors[0] == 'r'
                     ):
-                #print('R %s %s' % (alts[-1], alt))
-                # TODO check these names
-                # LL and RR rotations
-                alt.off = altoffs[-1]
-                alt.skip = altskips[-1]
-                alt.delta = altdeltas[-1]
-                alt.weight += alts[-1].weight
-                alt.iweight = alts[-1].weight+weight+1
-                alts[-1] = alt
-                #print('R -> %s' % alts[-1])
+                alts[-1].off = altoffs[-2]
+                alts[-1].skip = altskips[-2]
+                alts[-1].delta = altdeltas[-2]
+                alts[-1].weight += alts[-2].weight
+                alts[-1].iweight = alts[-2].weight+alts[-1].weight+weight+1
+                alts[-1].colors = ('r', 'r') # LL/RR recolor
+                alts.pop(-2)
+                altoffs[-1] = altoffs[-2] ; altoffs.pop(-2)
+                altskips[-1] = altskips[-2] ; altskips.pop(-2)
+                altdeltas[-1] = altdeltas[-2] ; altdeltas.pop(-2)
+                altweights[-1] = altweights[-2] ; altweights.pop(-2)
+                alts.append(alt)
+                altoffs.append(off)
+                altskips.append(skip)
+                altdeltas.append(delta)
+                altweights.append(weight)
             elif (len(alts) >= 2 and 
                     # TODO make sure we aren't backtracking?
                     alts[-2].lt == alt.lt and alts[-2].lt != alts[-1].lt and
                     # TODO do we really need to check for removes?
                     value is not None and
-                    alts[-1].random < alt.random
+                    #False
+                    #alts[-1].random < alt.random
                     #alts[-2].weight < alts[-1].weight+weight+1
+                    alts[-2].colors[0] == 'r' and alts[-1].colors[0] == 'r'
                     ):
                 #print('R %s %s %s' % (alts[-2], alts[-1], alt))
                 # TODO I don't think this is quite the right rotation
@@ -171,6 +205,7 @@ class LogTree:
                 alt.delta = altdeltas[-2]
                 alt.weight += alts[-2].weight
                 alt.iweight = alts[-2].weight+alts[-1].weight+weight+1
+                alt.colors = ('r', 'r') # LR/RL recolor
                 alts[-2] = alt
 #                alts[-2], alts[-1] = alts[-1], alts[-2]
 #                altoffs[-2], altoffs[-1] = altoffs[-1], altoffs[-2]
@@ -189,6 +224,10 @@ class LogTree:
 #                altweights.append(weight)
                 #print('R -> %s %s' % (alts[-2], alts[-1]))
             else:
+#                else:
+#                    # TODO hm, same?
+#                    if len(alts) >= 1:
+#                        alts[-1].colors = ('r', alts[-1].colors[1])
                 #print('A %s' % alt)
                 alt.iweight = weight+1
                 alts.append(alt)
@@ -226,7 +265,8 @@ class LogTree:
                                     off=off,
                                     skip=i+1,
                                     delta=delta,
-                                    random=alt.random),
+                                    random=alt.random,
+                                    colors=(alt.colors[1],alt.colors[0])),
                                 off, i, delta, weight)
                             weight = alt.weight
                         #else:
@@ -248,7 +288,8 @@ class LogTree:
                                     off=alt.off,
                                     skip=alt.skip,
                                     delta=delta+alt.delta+splice+dsplice,
-                                    random=alt.random),
+                                    random=alt.random,
+                                    colors=alt.colors),
                                 off, i, delta+splice+dsplice, weight)
                             weight -= alt.weight
                         hi = min(hi, alt.key+delta+splice)
@@ -262,7 +303,8 @@ class LogTree:
                                     off=off,
                                     skip=i+1,
                                     delta=delta+splice+dsplice,
-                                    random=alt.random),
+                                    random=alt.random,
+                                    colors=(alt.colors[1],alt.colors[0])),
                                 off, i, delta+splice+dsplice, weight)
                             weight = alt.weight
                         hi = min(hi, alt.key+delta+splice)
@@ -280,7 +322,8 @@ class LogTree:
                                     off=alt.off,
                                     skip=alt.skip,
                                     delta=delta+alt.delta,
-                                    random=alt.random),
+                                    random=alt.random,
+                                    colors=alt.colors),
                                 off, i, delta, weight)
                             weight -= alt.weight
                         lo = max(lo, alt.key+delta)
@@ -299,7 +342,8 @@ class LogTree:
                             delta=delta+splice
                                 if node.key+delta >= key
                                 else delta,
-                            random=random.random()),
+                            random=random.random(),
+                            colors=('r','r')),
                         off, len(node.alts), 0, weight)
                     self.count += 1
                 # omit deletes
