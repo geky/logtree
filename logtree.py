@@ -56,7 +56,7 @@ class LogTree:
         def __repr__(self):
             return 'LogTree.Alt(%s)' % self
 
-    def __init__(self, nodes=[], rotate_pred='crc_key'):
+    def __init__(self, nodes=[], rotate_pred='crc_key_and_count'):
         self.nodes = []
         self.count = 0
         for k, v in nodes:
@@ -73,6 +73,9 @@ class LogTree:
             self.rotate_pred = lambda a, b: brev(a.off) > brev(b.off)
         elif rotate_pred == 'brev_key':
             self.rotate_pred = lambda a, b: brev(a.key) > brev(b.key)
+        elif rotate_pred == 'brev_key_and_count':
+            self.rotate_pred = lambda a, b: (
+                brev(a.key+self.count) > brev(b.key+self.count))
         elif rotate_pred == 'crc_off':
             self.rotate_pred = lambda a, b: (
                 binascii.crc32(struct.pack('<I', a.off))
@@ -83,6 +86,16 @@ class LogTree:
             self.rotate_pred = lambda a, b: (
                 binascii.crc32(struct.pack('<I', a.key))
                 > binascii.crc32(struct.pack('<I', b.key)))
+        elif rotate_pred == 'crc_key_and_count':
+            def pred(a, b):
+                #print(a.key+self.count, b.key+self.count, self.count, binascii.crc32(struct.pack('<I', a.key+self.count)), binascii.crc32(struct.pack('<I', b.key+self.count)))
+                return (
+                    binascii.crc32(struct.pack('<I', a.key+self.count))
+                    > binascii.crc32(struct.pack('<I', b.key+self.count)))
+#            self.rotate_pred = lambda a, b: (
+#                binascii.crc32(struct.pack('<I', a.key+self.count))
+#                > binascii.crc32(struct.pack('<I', b.key+self.count)))
+            self.rotate_pred = pred
         else:
             self.rotate_pred = rotate_pred
 
@@ -372,7 +385,8 @@ class LogTree:
                                 if node.key+delta >= key else
                                 key) - nroot),
                         None, None, off, len(node.alts), 0)
-                    self.count += 1
+                    if type == 'create':
+                        self.count += 1
                 # omit deletes
                 if prevwasdeleted and not prevwasrotated:
                     alts = alts[:-1]
