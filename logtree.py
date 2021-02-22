@@ -46,11 +46,12 @@ class LogTree:
             self.colors = colors
 
         def __str__(self):
-            return '%s%s%s@%s.%s' % (
+            return '%s%s%s@%s.%s%s' % (
                 '<' if self.lt else '≥',
                 self.key,
                 '%+d' % self.delta if self.delta else '',
-                self.off, self.skip)
+                self.off, self.skip,
+                ''.join(self.colors))
 
         def __repr__(self):
             return 'LogTree.Alt(%s)' % self
@@ -170,6 +171,8 @@ class LogTree:
                     #alts[-2].random < alts[-1].random
                     alts[-2].colors[0] == 'r' and alts[-1].colors[0] == 'r'
                     ):
+                #print('RR %s %s %s' % (alts[-2], alts[-1], alt))
+                # RR and LL rotations
                 alts[-1].off = altoffs[-2]
                 alts[-1].skip = altskips[-2]
                 alts[-1].delta = altdeltas[-2]
@@ -186,9 +189,10 @@ class LogTree:
                 altskips.append(skip)
                 altdeltas.append(delta)
                 altweights.append(weight)
+                #print('RR -> %s %s' % (alts[-2], alts[-1]))
             elif (len(alts) >= 2 and 
                     # TODO make sure we aren't backtracking?
-                    alts[-2].lt == alt.lt and alts[-2].lt != alts[-1].lt and
+                    alts[-2].lt != alts[-1].lt and alts[-2].lt == alt.lt and
                     # TODO do we really need to check for removes?
                     value is not None and
                     #False
@@ -196,17 +200,19 @@ class LogTree:
                     #alts[-2].weight < alts[-1].weight+weight+1
                     alts[-2].colors[0] == 'r' and alts[-1].colors[0] == 'r'
                     ):
-                #print('R %s %s %s' % (alts[-2], alts[-1], alt))
+                #print('RLR %s %s %s' % (alts[-2], alts[-1], alt))
                 # TODO I don't think this is quite the right rotation
                 # TODO check these names
-                # LR and RL rotations
+                # LRL and RLR rotations
                 alt.off = altoffs[-2]
                 alt.skip = altskips[-2]
                 alt.delta = altdeltas[-2]
                 alt.weight += alts[-2].weight
                 alt.iweight = alts[-2].weight+alts[-1].weight+weight+1
+                alts[-1].colors = (alt.colors[0], alts[-1].colors[1])
                 alt.colors = ('r', 'r') # LR/RL recolor
                 alts[-2] = alt
+                #print('RLR -> %s %s' % (alts[-2], alts[-1]))
 #                alts[-2], alts[-1] = alts[-1], alts[-2]
 #                altoffs[-2], altoffs[-1] = altoffs[-1], altoffs[-2]
 #                altskips[-2], altskips[-1] = altskips[-1], altskips[-2]
@@ -223,6 +229,50 @@ class LogTree:
 #                altdeltas.append(delta)
 #                altweights.append(weight)
                 #print('R -> %s %s' % (alts[-2], alts[-1]))
+            elif (len(alts) >= 2 and
+                    # TODO make sure we aren't backtracking?
+                    alts[-2].lt != alts[-1].lt and alts[-2].lt != alt.lt and
+                    # TODO do we really need to check for removes?
+                    value is not None and
+                    #False
+                    #alts[-1].random < alt.random
+                    #alts[-2].weight < alts[-1].weight+weight+1
+                    alts[-2].colors[0] == 'r' and alts[-1].colors[0] == 'r'
+                    ):
+                #print('RLL %s %s %s' % (alts[-2], alts[-1], alt))
+                # TODO I don't think this is quite the right rotation
+                # TODO check these names
+                # LRR and RLL rotations
+                alt.off = altoffs[-1]
+                alt.skip = altskips[-1]
+                alt.delta = altdeltas[-1]
+                alt.weight += alts[-1].weight
+                alt.iweight = alts[-2].weight+alts[-1].weight+weight+1
+                alts[-2].colors = (alt.colors[0], alts[-2].colors[1])
+                alt.colors = ('r', 'r') # LR/RL recolor
+                alts[-1] = alts[-2]
+                altoffs[-1], altoffs[-2] = altoffs[-2], altoffs[-1]
+                altskips[-1], altskips[-2] = altskips[-2], altskips[-1]
+                altdeltas[-1], altdeltas[-2] = altdeltas[-2], altdeltas[-1]
+                altweights[-1], altweights[-2] = altweights[-2], altweights[-1]
+                alts[-2] = alt
+                #print('RLL -> %s %s' % (alts[-2], alts[-1]))
+                
+#            elif (len(alts) >= 2 and
+#                    alts[-1].lt == alt.lt and
+#                    value is not None and
+#                    alts[-2].colors[0] == 'r' and alts[-1].colors[0] == 'r'
+#                    ):
+#                 # half LR/RL rotations
+#                 # we can't pull off a full LR/RL rotation here, but we can
+#                 # at least make progress for next insertion
+#                alt.off = altoffs[-1]
+#                alt.skip = altskips[-1]
+#                alt.delta = altdeltas[-1]
+#                alt.weight += alts[-1].weight
+#                alt.iweight = alts[-1].weight+weight+1
+#                alt.colors = (alt.colors[0], 'r') # half LR/RL recolor
+#                alts[-1] = alt
             else:
 #                else:
 #                    # TODO hm, same?
@@ -626,7 +676,7 @@ def main():
                     except AssertionError as e:
                         print(e)
                         if n < 100:
-                            sys.exit(0)
+                            sys.exit(2)
                         else:
                             sys.exit(1)
 
