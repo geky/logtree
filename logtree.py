@@ -124,7 +124,8 @@ class LogTree:
 
         weight = self.count
         prevwasdeleted = False
-        skipped = False
+        skipped = 0
+        prevwasred = False
 
         # keep track of past alt to see if we should rotate
         #
@@ -141,10 +142,24 @@ class LogTree:
                     "alt.lt pred does not hold %s >= %s, alt.lt = %s" % (
                         alt.key, key, alt.lt))
 
-            # recolor?
             nonlocal skipped
+            #assert skipped in [0, 1], "skipped == %d, %s, %s" % (skipped, self, key)
+
+            # red-red indicates skipped node
+            # TODO does this work?
+            nonlocal prevwasred
+#            if alt.colors[0] == 'r' and prevwasred:
+#                alt.colors = ('b', alt.colors[1])
+#            if alt.colors[1] == 'r' and prevwasred:
+#                alt.colors = (alt.colors[0], 'b')
+            if prevwasred:
+                alt.colors = ('b', 'b')
+            prevwasred = (alt.colors[0] == 'r')
+
+            # recolor?
             if alt.colors == ('r','r'):
-                if not skipped:
+                # TODO revert this?
+                if True: #skipped == 0:
                     # recolor
                     alt.colors = ('b','b')
                     if len(alts) >= 1:
@@ -152,7 +167,7 @@ class LogTree:
                 else:
                     # compensate for skipped black node
                     alt.colors = ('b','b')
-                    skipped = False
+                    skipped -= 1
 
             # rotate?
 #            if (len(alts) >= 1 and alt.lt == alts[-1].lt and
@@ -330,7 +345,7 @@ class LogTree:
                         else:
                             # TODO can red here ever happen?
                             if alt.colors[1] == 'b':
-                                skipped = True
+                                skipped += 1
 #                            print('S %s' % (alt))
                         # TODO it's interesting we need this min here, but
                         # only with LR/RL rotates
@@ -356,7 +371,7 @@ class LogTree:
                         else:
                             #skipped = True
                             if alt.colors[0] == 'b':
-                                skipped = True
+                                skipped += 1
 #                            print('S %s' % (alt))
                         hi = min(hi, alt.key+delta+splice)
                 elif alt.lt:
@@ -375,7 +390,7 @@ class LogTree:
                             weight = alt.weight
                         else:
                             if alt.colors[1] == 'b':
-                                skipped = True
+                                skipped += 1
                             #skipped = True
 #                            print('S %s' % (alt))
                         hi = min(hi, alt.key+delta+splice)
@@ -399,7 +414,7 @@ class LogTree:
                             weight -= alt.weight
                         else:
                             if alt.colors[0] == 'b':
-                                skipped = True
+                                skipped += 1
                             #skipped = True
 #                            print('S %s' % (alt))
                         lo = max(lo, alt.key+delta)
