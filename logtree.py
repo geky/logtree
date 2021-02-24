@@ -124,6 +124,7 @@ class LogTree:
 
         weight = self.count
         prevwasdeleted = False
+        skipped = False
 
         # keep track of past alt to see if we should rotate
         #
@@ -141,10 +142,17 @@ class LogTree:
                         alt.key, key, alt.lt))
 
             # recolor?
+            nonlocal skipped
             if alt.colors == ('r','r'):
-                alt.colors = ('b','b')
-                if len(alts) >= 1:
-                    alts[-1].colors = ('r', alts[-1].colors[1])
+                if not skipped:
+                    # recolor
+                    alt.colors = ('b','b')
+                    if len(alts) >= 1:
+                        alts[-1].colors = ('r', alts[-1].colors[1])
+                else:
+                    # compensate for skipped black node
+                    alt.colors = ('b','b')
+                    skipped = False
 
             # rotate?
 #            if (len(alts) >= 1 and alt.lt == alts[-1].lt and
@@ -293,7 +301,6 @@ class LogTree:
         off = len(self.nodes)-1
         skip = 0
         lo, hi = float('-inf'), float('inf')
-        skipped = False
         while True:
             if hasattr(self, 'iters'):
                 self.iters += 1
@@ -412,7 +419,7 @@ class LogTree:
                                 if node.key+delta >= key
                                 else delta,
                             random=random.random(),
-                            colors=('r','r') if not skipped else ('b', 'b')),
+                            colors=('r','r')),
                         off, len(node.alts), 0, weight)
                     self.count += 1
                 # omit deletes
