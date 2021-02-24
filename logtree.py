@@ -145,16 +145,16 @@ class LogTree:
             nonlocal skipped
             #assert skipped in [0, 1], "skipped == %d, %s, %s" % (skipped, self, key)
 
-            # red-red indicates skipped node
-            # TODO does this work?
-            nonlocal prevwasred
-#            if alt.colors[0] == 'r' and prevwasred:
-#                alt.colors = ('b', alt.colors[1])
-#            if alt.colors[1] == 'r' and prevwasred:
-#                alt.colors = (alt.colors[0], 'b')
-            if prevwasred:
-                alt.colors = ('b', 'b')
-            prevwasred = (alt.colors[0] == 'r')
+#            # red-red indicates skipped node
+#            # TODO does this work?
+#            nonlocal prevwasred
+##            if alt.colors[0] == 'r' and prevwasred:
+##                alt.colors = ('b', alt.colors[1])
+##            if alt.colors[1] == 'r' and prevwasred:
+##                alt.colors = (alt.colors[0], 'b')
+#            if prevwasred:
+#                alt.colors = ('b', 'b')
+#            prevwasred = (alt.colors[0] == 'r')
 
             # recolor?
             if alt.colors == ('r','r'):
@@ -309,6 +309,21 @@ class LogTree:
                 altdeltas.append(delta)
                 altweights.append(weight)
 
+        # not really an "append", we just recolor based on skips
+        def appendskip(skipped_color):
+            if skipped_color == 'b':
+                if len(alts) >= 1 and alts[-1].colors[0] == 'r':
+                    # maybe this happens normally?
+                    alts[-1].colors = ('b', alts[-1].colors[1])
+                elif len(alts) >= 2 and alts[-1].colors == ('b', 'b') and alts[-2].colors[0] == 'r':
+                    # this happens during rotates
+                    alts[-1].colors = ('b', 'r')
+                    alts[-2].colors = ('b', alts[-2].colors[1])
+                else:
+                    #assert len(alts) < 2 or (alts[-1].colors == ('b','b') and alts[-2].colors[0] == 'b')
+                    #print('oh no!')
+                    pass
+
         # TODO hm, root?
         delta = 0
         splice = +1 if type == 'create' else 0
@@ -343,6 +358,7 @@ class LogTree:
                                 off, i, delta, weight)
                             weight = alt.weight
                         else:
+                            appendskip(alt.colors[1])
                             # TODO can red here ever happen?
                             if alt.colors[1] == 'b':
                                 skipped += 1
@@ -369,6 +385,7 @@ class LogTree:
                                 off, i, delta+splice+dsplice, weight)
                             weight -= alt.weight
                         else:
+                            appendskip(alt.colors[0])
                             #skipped = True
                             if alt.colors[0] == 'b':
                                 skipped += 1
@@ -389,6 +406,7 @@ class LogTree:
                                 off, i, delta+splice+dsplice, weight)
                             weight = alt.weight
                         else:
+                            appendskip(alt.colors[1])
                             if alt.colors[1] == 'b':
                                 skipped += 1
                             #skipped = True
@@ -413,6 +431,7 @@ class LogTree:
                                 off, i, delta, weight)
                             weight -= alt.weight
                         else:
+                            appendskip(alt.colors[0])
                             if alt.colors[0] == 'b':
                                 skipped += 1
                             #skipped = True
