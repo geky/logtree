@@ -5,6 +5,15 @@ import itertools as it
 import collections as co
 import binascii
 import struct
+import os
+
+LOG_APPEND = os.environ.get('LOG_APPEND', None)
+if LOG_APPEND:
+    def log_append(*args):
+        print(*args)
+else:
+    def log_append(*args):
+        pass
 
 # 32-bit bit reverse
 def brev(n):
@@ -54,7 +63,7 @@ class LogTree:
                 '%+d' % self.delta if self.delta else '',
                 self.off, self.skip,
                 ''.join(self.colors),
-                ''.join('r' if r else '.' for r in self.rotates),
+                ''.join('R' if r==2 else 'r' if r else '.' for r in self.rotates),
                 'd' if self.dont else '.')
 
         def __repr__(self):
@@ -200,7 +209,7 @@ class LogTree:
                     #alts[-2].random < alts[-1].random
                     alts[-2].colors[0] == 'r' and alts[-1].colors[0] == 'r'
                     ):
-#                print('RR %s %s %s' % (alts[-2], alts[-1], alt))
+                log_append('RR %s %s %s' % (alts[-2], alts[-1], alt))
                 # RR and LL rotations
                 alts[-1].off = altoffs[-2]
                 alts[-1].skip = altskips[-2]
@@ -222,7 +231,7 @@ class LogTree:
                 altskips.append(skip)
                 altdeltas.append(delta)
                 altweights.append(weight)
-#                print('RR -> %s %s' % (alts[-2], alts[-1]))
+                log_append('RR -> %s %s' % (alts[-2], alts[-1]))
             elif (len(alts) >= 2 and 
                     # TODO make sure we aren't backtracking?
                     alts[-2].lt != alts[-1].lt and alts[-2].lt == alt.lt and
@@ -233,7 +242,7 @@ class LogTree:
                     #alts[-2].weight < alts[-1].weight+weight+1
                     alts[-2].colors[0] == 'r' and alts[-1].colors[0] == 'r'
                     ):
-#                print('RLR %s %s %s' % (alts[-2], alts[-1], alt))
+                log_append('RLR %s %s %s' % (alts[-2], alts[-1], alt))
                 # TODO I don't think this is quite the right rotation
                 # TODO check these names
                 # LRL and RLR rotations
@@ -264,7 +273,7 @@ class LogTree:
 #                altskips.append(skip)
 #                altdeltas.append(delta)
 #                altweights.append(weight)
-#                print('R -> %s %s' % (alts[-2], alts[-1]))
+                log_append('R -> %s %s' % (alts[-2], alts[-1]))
             elif (len(alts) >= 2 and
                     # TODO make sure we aren't backtracking?
                     alts[-2].lt != alts[-1].lt and alts[-2].lt != alt.lt and
@@ -275,7 +284,7 @@ class LogTree:
                     #alts[-2].weight < alts[-1].weight+weight+1
                     alts[-2].colors[0] == 'r' and alts[-1].colors[0] == 'r'
                     ):
-#                print('RLL %s %s %s' % (alts[-2], alts[-1], alt))
+                log_append('RLL %s %s %s' % (alts[-2], alts[-1], alt))
                 # TODO I don't think this is quite the right rotation
                 # TODO check these names
                 # LRR and RLL rotations
@@ -287,16 +296,16 @@ class LogTree:
                 alts[-2].colors = (alt.colors[0], alts[-2].colors[1])
                 alt.colors = ('r', 'r') # LR/RL recolor
                 if not alts[-1].lt:
-                    alt.rotates = (True, alt.rotates[1])
+                    alt.rotates = (3, alt.rotates[1])
                 else:
-                    alt.rotates = (alt.rotates[0], True)
+                    alt.rotates = (alt.rotates[0], 3)
                 alts[-1] = alts[-2]
                 altoffs[-1], altoffs[-2] = altoffs[-2], altoffs[-1]
                 altskips[-1], altskips[-2] = altskips[-2], altskips[-1]
                 altdeltas[-1], altdeltas[-2] = altdeltas[-2], altdeltas[-1]
                 altweights[-1], altweights[-2] = altweights[-2], altweights[-1]
                 alts[-2] = alt
-#                print('RLL -> %s %s' % (alts[-2], alts[-1]))
+                log_append('RLL -> %s %s' % (alts[-2], alts[-1]))
                 
 #            elif (len(alts) >= 2 and
 #                    alts[-1].lt == alt.lt and
@@ -318,7 +327,7 @@ class LogTree:
 #                    # TODO hm, same?
 #                    if len(alts) >= 1:
 #                        alts[-1].colors = ('r', alts[-1].colors[1])
-#                print('A %s' % alt)
+                log_append('A %s' % alt)
                 alt.iweight = weight+1
                 alts.append(alt)
                 altoffs.append(off)
@@ -359,7 +368,17 @@ class LogTree:
                 if hasattr(self, 'iters2'):
                     self.iters2 += 1
 
-                #assert alt.rotates != (True, True), "%s %s" % (self, key)
+                assert (alt.dont, alt.rotates) in {
+                    (False, (False, False)),
+                    (True,  (False, False)),
+                    (2,     (False, False)),
+                    (3,     (False, False)),
+                    (False, (True,  False)),
+                    (False, (False, True )),
+                    (False, (3,  False   )),
+                    (False, (False, 3    )),
+                    (False, (2,     False)),
+                    (False, (False, 2    ))}, "oh no %s %s %s" % (self, key, (alt.dont, alt.rotates))
 
                 if not alt.lt:
                     # need to trim, otherwise height grows indefinitely
@@ -375,7 +394,7 @@ class LogTree:
                                     delta=delta,
                                     random=alt.random,
                                     colors=(alt.colors[1],alt.colors[0] if not rotates[0] else 'b'),
-                                    rotates=(alt.rotates[0],False),
+                                    rotates=(False,False),
                                     dont=rotates[0]),
                                 off, i, delta, weight)
                             weight = alt.weight
@@ -387,7 +406,7 @@ class LogTree:
                                 skipped += 1
 #                            print('S %s' % (alt))
                         rotate = rotates[1] or alt.dont
-                        rotates = alt.rotates
+                        rotates = (alt.rotates[0] or rotates[1]==2, alt.rotates[1] or rotates[0]==2)
                         #print('gt ', rotates, rotate)
                         # TODO it's interesting we need this min here, but
                         # only with LR/RL rotates
@@ -408,7 +427,7 @@ class LogTree:
                                     delta=delta+alt.delta+splice+dsplice,
                                     random=alt.random,
                                     colors=(alt.colors[0],alt.colors[1] if not rotates[1] else 'b'),
-                                    rotates=(alt.rotates[0],False),
+                                    rotates=(alt.rotates[0],alt.rotates[1]),
                                     # can rotates[1] ever happen here?
                                     dont=rotates[1] or alt.dont),
                                 off, i, delta+splice+dsplice, weight)
@@ -421,7 +440,7 @@ class LogTree:
                                 skipped += 1
 #                            print('S %s' % (alt))
                         rotate = rotates[0]
-                        rotates = (False, False)
+                        rotates = (False or rotates[1]==2, False or rotates[0]==2)
                         #print('!gt', rotates, rotate)
                         hi = min(hi, alt.key+delta+splice)
                 elif alt.lt:
@@ -436,19 +455,19 @@ class LogTree:
                                     delta=delta+splice+dsplice,
                                     random=alt.random,
                                     colors=(alt.colors[1],alt.colors[0] if not rotates[1] else 'b'),
-                                    rotates=(False,alt.rotates[1]),
+                                    rotates=(False,False),
                                     dont=rotates[1]),
                                 off, i, delta+splice+dsplice, weight)
                             weight = alt.weight
                         else:
-                            assert rotate, "%s %s %s :: %s %s %s" % (self, key, rotate, lo, hi, alt.key+delta)
+                            assert rotate, "%s %s %s" % (self, key, rotate)
                             appendskip(alt.colors[1])
                             if alt.colors[1] == 'b':
                                 skipped += 1
                             #skipped = True
 #                            print('S %s' % (alt))
                         rotate = rotates[0] or alt.dont
-                        rotates = alt.rotates
+                        rotates = (alt.rotates[0] or rotates[1]==2, alt.rotates[1] or rotates[0]==2)
                         #print('lt ', rotates, rotate)
                         hi = min(hi, alt.key+delta+splice)
                         delta += alt.delta
@@ -467,7 +486,7 @@ class LogTree:
                                     delta=delta+alt.delta,
                                     random=alt.random,
                                     colors=(alt.colors[0],alt.colors[1] if not rotates[0] else 'b'),
-                                    rotates=(False,alt.rotates[1]),
+                                    rotates=(alt.rotates[0],alt.rotates[1]),
                                     # can rotates[0] ever happen here?
                                     dont=rotates[0] or alt.dont),
                                 off, i, delta, weight)
@@ -480,7 +499,7 @@ class LogTree:
                             #skipped = True
 #                            print('S %s' % (alt))
                         rotate = rotates[1]
-                        rotates = (False, False)
+                        rotates = (False or rotates[1]==2, False or rotates[0]==2)
                         #print('!lt', rotates, rotate)
                         lo = max(lo, alt.key+delta)
             else:
@@ -512,7 +531,7 @@ class LogTree:
 
         # append
         self.nodes.append(LogTree.Node(key, value, type=type, alts=alts))
-#        print('N %s' % self.nodes[-1])
+        log_append('N %s' % self.nodes[-1])
 
     def lookup(self, key):
         if not self.nodes:

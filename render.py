@@ -42,7 +42,7 @@ def render(tree, output):
                     "<" if alt.lt else "≥",
                     alt.key,
                     '%+d' % alt.delta if alt.delta else '',
-                    ''.join('R' if r==2 else 'r' if r else '.' for r in alt.rotates),
+                    ''.join('ᴙ' if r==3 else 'R' if r==2 else 'r' if r else '.' for r in alt.rotates),
                     'd' if alt.dont else '.'))
 
         for k, v in heights.items():
