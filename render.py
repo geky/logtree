@@ -69,7 +69,11 @@ def render(tree, output):
         "with_labels": False,
     }
     edges = G.edges()
-    edge_colors = ['#c44e52' if G[u][v]['color'] == 'r' else 'black' for u,v in edges]
+    edge_colors = [
+        '#c44e52' if G[u][v]['color'] == 'r' else
+        '#ffc857' if G[u][v]['color'] == 'y' else
+        'black'
+        for u,v in edges]
     nx.draw_networkx(G, pos, **options, edges=edges, edge_color=edge_colors)
     nx.draw_networkx_labels(G, pos, node_labels)
     #nx.draw_networkx_edge_labels(G, pos, edge_labels)

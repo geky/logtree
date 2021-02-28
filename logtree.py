@@ -141,6 +141,7 @@ class LogTree:
         prevwasred = False
         rotates = (False,False)
         rotate = False
+        lo, hi = float('-inf'), float('inf')
 
         # keep track of past alt to see if we should rotate
         #
@@ -172,19 +173,27 @@ class LogTree:
 #            prevwasred = (alt.colors[0] == 'r')
 
             # recolor?
+            assert alt.colors != ('y','r')
+            assert alt.colors != ('r','y')
+            if alt.colors == ('y','b'):
+                if len(alts) >= 1:
+                    alts[-1].colors = ('r', alts[-1].colors[1])
+#                    # split red-yellow-red?
+#                    if alts[-1].colors ==  ('r', 'y'):
+#                        alts[-1].colors = ('b', 'b')
             if alt.colors == ('r','r'):
-                # TODO revert this?
-                if True: #skipped == 0:
-                    # recolor
-                    alt.colors = ('b','b')
-                    if len(alts) >= 1:
-                        alts[-1].colors = ('r', alts[-1].colors[1])
-                else:
-                    # compensate for skipped black node
-                    alt.colors = ('b','b')
-                    skipped -= 1
+                # recolor
+                alt.colors = ('b','b')
+                if len(alts) >= 1:
+                    alts[-1].colors = ('r', alts[-1].colors[1])
+                    # split red-yellow-red?
+                    if alts[-1].colors ==  ('r', 'y'):
+                        alts[-1].colors = ('b', 'b')
+
 
             # rotate?
+            # TODO how do we remove outdated branches in yellow nodes?
+
 #            if (len(alts) >= 1 and alt.lt == alts[-1].lt and
 #                    # TODO do we really need to check for removes?
 #                    value is not None and
@@ -202,7 +211,68 @@ class LogTree:
 #                alt.iweight = alts[-1].weight+weight+1
 #                alts[-1] = alt
 #                #print('R -> %s' % alts[-1])
-            if (len(alts) >= 2 and
+            if (len(alts) >= 1 and
+                    value is not None and
+                    # TODO reorder to condition is less strict?
+                    alts[-1].colors[0] == 'y' and alt.colors[0] == 'r'
+                    ):
+                log_append('YRR %s %s' % (alts[-1], alt))
+                # RR/LL yellow-reds
+                assert alts[-1].colors[1] == 'b'
+                assert alt.colors[1] == 'b'
+                alt.colors = ('b', 'b')
+
+                alt.off = altoffs[-1]
+                alt.skip = altskips[-1]
+                alt.delta = altdeltas[-1]
+
+                alts.pop(-1)
+                altoffs.pop(-1)
+                altskips.pop(-1)
+                altdeltas.pop(-1)
+                
+                alts.append(alt)
+                altoffs.append(off)
+                altskips.append(skip)
+                altdeltas.append(delta)
+                log_append('YRR -> %s' % (alts[-1]))
+
+#            elif (len(alts) >= 2 and
+#                    value is not None and
+#                    not (alt.key > lo and alt.key < hi)
+#                    ):
+#                log_append('YP %s %s' % (alts[-1], alt))
+#                # yellow-red post-split cleanup
+#                #assert alts[-1].colors[1] == 'b'
+#                #assert alt.colors[1] == 'r', '%s %s' % (tuple([n.key for n in self.nodes]), key)
+#                #alt.colors = ('b', 'b')
+#                alts[-1].colors = ('b', 'b')
+#
+##                alts.insert(-1, alt)
+##                altoffs.insert(-1, off)
+##                altskips.insert(-1, skip)
+##                altdeltas.insert(-1, delta)
+#
+#                log_append('YP -> %s' % (alts[-1]))
+
+            elif (len(alts) >= 1 and
+                    value is not None and
+                    alts[-1].colors[0] == 'y' and alt.colors[0] == 'b'
+                    ):
+                log_append('YRL %s %s' % (alts[-1], alt))
+                # RL/LR yellow-reds
+                assert alts[-1].colors[1] == 'b'
+                #assert alt.colors[1] == 'r', '%s %s' % (tuple([n.key for n in self.nodes]), key)
+                alt.colors = ('b', 'b')
+                alts[-1].colors = ('b', 'b')
+
+                alts.insert(-1, alt)
+                altoffs.insert(-1, off)
+                altskips.insert(-1, skip)
+                altdeltas.insert(-1, delta)
+
+                log_append('YRL -> %s %s' % (alts[-2], alts[-1]))
+            elif (len(alts) >= 2 and
                     alts[-2].lt == alts[-1].lt and
                     value is not None and
                     #False
@@ -210,28 +280,38 @@ class LogTree:
                     alts[-2].colors[0] == 'r' and alts[-1].colors[0] == 'r'
                     ):
                 log_append('RR %s %s %s' % (alts[-2], alts[-1], alt))
-                # RR and LL rotations
-                alts[-1].off = altoffs[-2]
-                alts[-1].skip = altskips[-2]
-                alts[-1].delta = altdeltas[-2]
-                alts[-1].weight += alts[-2].weight
-                alts[-1].iweight = alts[-2].weight+alts[-1].weight+weight+1
-                alts[-1].colors = ('r', 'r') # LL/RR recolor
-                if not alts[-2].lt:
-                    alts[-1].rotates = (True, alts[-2].rotates[1])
-                else:
-                    alts[-1].rotates = (alts[-2].rotates[0], True)
-                alts.pop(-2)
-                altoffs[-1] = altoffs[-2] ; altoffs.pop(-2)
-                altskips[-1] = altskips[-2] ; altskips.pop(-2)
-                altdeltas[-1] = altdeltas[-2] ; altdeltas.pop(-2)
-                altweights[-1] = altweights[-2] ; altweights.pop(-2)
+                # RR/LL red-reds
+                # TODO assert colors[1] is b?
+                assert alts[-2].colors[1] == 'b'
+                assert alts[-1].colors[1] == 'b'
+                alts[-2].colors = ('y', 'b')
+
                 alts.append(alt)
                 altoffs.append(off)
                 altskips.append(skip)
                 altdeltas.append(delta)
-                altweights.append(weight)
-                log_append('RR -> %s %s' % (alts[-2], alts[-1]))
+
+#                alts[-1].off = altoffs[-2]
+#                alts[-1].skip = altskips[-2]
+#                alts[-1].delta = altdeltas[-2]
+#                alts[-1].weight += alts[-2].weight
+#                alts[-1].iweight = alts[-2].weight+alts[-1].weight+weight+1
+#                alts[-1].colors = ('r', 'r') # LL/RR recolor
+#                if not alts[-2].lt:
+#                    alts[-1].rotates = (True, alts[-2].rotates[1])
+#                else:
+#                    alts[-1].rotates = (alts[-2].rotates[0], True)
+#                alts.pop(-2)
+#                altoffs[-1] = altoffs[-2] ; altoffs.pop(-2)
+#                altskips[-1] = altskips[-2] ; altskips.pop(-2)
+#                altdeltas[-1] = altdeltas[-2] ; altdeltas.pop(-2)
+#                altweights[-1] = altweights[-2] ; altweights.pop(-2)
+#                alts.append(alt)
+#                altoffs.append(off)
+#                altskips.append(skip)
+#                altdeltas.append(delta)
+#                altweights.append(weight)
+                log_append('RR -> %s %s %s' % (alts[-3], alts[-2], alts[-1]))
             elif (len(alts) >= 2 and 
                     # TODO make sure we aren't backtracking?
                     alts[-2].lt != alts[-1].lt and alts[-2].lt == alt.lt and
@@ -243,37 +323,50 @@ class LogTree:
                     alts[-2].colors[0] == 'r' and alts[-1].colors[0] == 'r'
                     ):
                 log_append('RLR %s %s %s' % (alts[-2], alts[-1], alt))
-                # TODO I don't think this is quite the right rotation
-                # TODO check these names
-                # LRL and RLR rotations
-                alt.off = altoffs[-2]
-                alt.skip = altskips[-2]
-                alt.delta = altdeltas[-2]
-                alt.weight += alts[-2].weight
-                alt.iweight = alts[-2].weight+alts[-1].weight+weight+1
-                alts[-1].colors = (alt.colors[0], alts[-1].colors[1])
-                alt.colors = ('r', 'r') # LR/RL recolor
-                if not alts[-2].lt:
-                    alt.rotates = (2, alt.rotates[1])
-                else:
-                    alt.rotates = (alt.rotates[0], 2)
-                alts[-2] = alt
-#                alts[-2], alts[-1] = alts[-1], alts[-2]
-#                altoffs[-2], altoffs[-1] = altoffs[-1], altoffs[-2]
-#                altskips[-2], altskips[-1] = altskips[-1], altskips[-2]
-#                altdeltas[-2], altdeltas[-1] = altdeltas[-1], altdeltas[-2]
-#                altweights[-2], altweights[-1] = altweights[-1], altweights[-2]
-#                alt.off = altoffs[-1]
-#                alt.skip = altskips[-1]
-#                alt.delta = altdeltas[-1]
-#                alt.weight += alts[-1].weight
-#                alts[-1] = alt
-#                alts.append(alt)
-#                altoffs.append(off)
-#                altskips.append(skip)
-#                altdeltas.append(delta)
-#                altweights.append(weight)
-                log_append('R -> %s %s' % (alts[-2], alts[-1]))
+                # LRL/RLR red-reds
+                assert alts[-2].colors[1] == 'b'
+                assert alts[-1].colors[1] == 'b'
+                alts[-2].colors = ('y', 'b')
+                alt.colors = ('r', 'b')
+                alts[-1].colors = ('b', 'b')
+
+                alts.insert(-1, alt)
+                altoffs.insert(-1, off)
+                altskips.insert(-1, skip)
+                altdeltas.insert(-1, delta)
+#                
+#
+#
+#
+#
+#                alt.off = altoffs[-2]
+#                alt.skip = altskips[-2]
+#                alt.delta = altdeltas[-2]
+#                alt.weight += alts[-2].weight
+#                alt.iweight = alts[-2].weight+alts[-1].weight+weight+1
+#                alts[-1].colors = (alt.colors[0], alts[-1].colors[1])
+#                alt.colors = ('r', 'r') # LR/RL recolor
+#                if not alts[-2].lt:
+#                    alt.rotates = (2, alt.rotates[1])
+#                else:
+#                    alt.rotates = (alt.rotates[0], 2)
+#                alts[-2] = alt
+##                alts[-2], alts[-1] = alts[-1], alts[-2]
+##                altoffs[-2], altoffs[-1] = altoffs[-1], altoffs[-2]
+##                altskips[-2], altskips[-1] = altskips[-1], altskips[-2]
+##                altdeltas[-2], altdeltas[-1] = altdeltas[-1], altdeltas[-2]
+##                altweights[-2], altweights[-1] = altweights[-1], altweights[-2]
+##                alt.off = altoffs[-1]
+##                alt.skip = altskips[-1]
+##                alt.delta = altdeltas[-1]
+##                alt.weight += alts[-1].weight
+##                alts[-1] = alt
+##                alts.append(alt)
+##                altoffs.append(off)
+##                altskips.append(skip)
+##                altdeltas.append(delta)
+##                altweights.append(weight)
+                log_append('RLR -> %s %s %s' % (alts[-3], alts[-2], alts[-1]))
             elif (len(alts) >= 2 and
                     # TODO make sure we aren't backtracking?
                     alts[-2].lt != alts[-1].lt and alts[-2].lt != alt.lt and
@@ -285,27 +378,43 @@ class LogTree:
                     alts[-2].colors[0] == 'r' and alts[-1].colors[0] == 'r'
                     ):
                 log_append('RLL %s %s %s' % (alts[-2], alts[-1], alt))
-                # TODO I don't think this is quite the right rotation
-                # TODO check these names
-                # LRR and RLL rotations
-                alt.off = altoffs[-1]
-                alt.skip = altskips[-1]
-                alt.delta = altdeltas[-1]
-                alt.weight += alts[-1].weight
-                alt.iweight = alts[-2].weight+alts[-1].weight+weight+1
-                alts[-2].colors = (alt.colors[0], alts[-2].colors[1])
-                alt.colors = ('r', 'r') # LR/RL recolor
-                if not alts[-1].lt:
-                    alt.rotates = (3, alt.rotates[1])
-                else:
-                    alt.rotates = (alt.rotates[0], 3)
-                alts[-1] = alts[-2]
+                # LRR/RLL red-reds
+                assert alts[-2].colors[1] == 'b'
+                assert alts[-1].colors[1] == 'b'
+                alts[-1].colors = ('y', 'b')
+                alt.colors = ('r', 'b')
+                alts[-2].colors = ('b', 'b')
+
+                alts[-1], alts[-2] = alts[-2], alts[-1]
                 altoffs[-1], altoffs[-2] = altoffs[-2], altoffs[-1]
                 altskips[-1], altskips[-2] = altskips[-2], altskips[-1]
                 altdeltas[-1], altdeltas[-2] = altdeltas[-2], altdeltas[-1]
-                altweights[-1], altweights[-2] = altweights[-2], altweights[-1]
-                alts[-2] = alt
-                log_append('RLL -> %s %s' % (alts[-2], alts[-1]))
+
+                alts.insert(-1, alt)
+                altoffs.insert(-1, off)
+                altskips.insert(-1, skip)
+                altdeltas.insert(-1, delta)
+                
+
+
+#                alt.off = altoffs[-1]
+#                alt.skip = altskips[-1]
+#                alt.delta = altdeltas[-1]
+#                alt.weight += alts[-1].weight
+#                alt.iweight = alts[-2].weight+alts[-1].weight+weight+1
+#                alts[-2].colors = (alt.colors[0], alts[-2].colors[1])
+#                alt.colors = ('r', 'r') # LR/RL recolor
+#                if not alts[-1].lt:
+#                    alt.rotates = (3, alt.rotates[1])
+#                else:
+#                    alt.rotates = (alt.rotates[0], 3)
+#                alts[-1] = alts[-2]
+#                altoffs[-1], altoffs[-2] = altoffs[-2], altoffs[-1]
+#                altskips[-1], altskips[-2] = altskips[-2], altskips[-1]
+#                altdeltas[-1], altdeltas[-2] = altdeltas[-2], altdeltas[-1]
+#                altweights[-1], altweights[-2] = altweights[-2], altweights[-1]
+#                alts[-2] = alt
+                log_append('RLL -> %s %s %s' % (alts[-3], alts[-2], alts[-1]))
                 
 #            elif (len(alts) >= 2 and
 #                    alts[-1].lt == alt.lt and
@@ -357,7 +466,6 @@ class LogTree:
         dsplice = -1 if type == 'delete' else 0
         off = len(self.nodes)-1
         skip = 0
-        lo, hi = float('-inf'), float('inf')
         while True:
             if hasattr(self, 'iters'):
                 self.iters += 1
@@ -368,22 +476,22 @@ class LogTree:
                 if hasattr(self, 'iters2'):
                     self.iters2 += 1
 
-                assert (alt.dont, alt.rotates) in {
-                    (False, (False, False)),
-                    (True,  (False, False)),
-                    (2,     (False, False)),
-                    (3,     (False, False)),
-                    (False, (True,  False)),
-                    (False, (False, True )),
-                    (False, (3,  False   )),
-                    (False, (False, 3    )),
-                    (False, (2,     False)),
-                    (False, (False, 2    ))}, "oh no %s %s %s" % (self, key, (alt.dont, alt.rotates))
+#                assert (alt.dont, alt.rotates) in {
+#                    (False, (False, False)),
+#                    (True,  (False, False)),
+#                    (2,     (False, False)),
+#                    (3,     (False, False)),
+#                    (False, (True,  False)),
+#                    (False, (False, True )),
+#                    (False, (3,  False   )),
+#                    (False, (False, 3    )),
+#                    (False, (2,     False)),
+#                    (False, (False, 2    ))}, "oh no %s %s %s" % (self, key, (alt.dont, alt.rotates))
 
                 if not alt.lt:
                     # need to trim, otherwise height grows indefinitely
                     if key >= alt.key+delta:
-                        if alt.key+delta < hi and alt.key+delta > lo:
+                        if True: #alt.key+delta < hi and alt.key+delta > lo:
                             appendalt(
                                 LogTree.Alt(
                                     lt=True,
@@ -399,7 +507,7 @@ class LogTree:
                                 off, i, delta, weight)
                             weight = alt.weight
                         else:
-                            assert rotate, "%s %s %s" % (self, key, rotate)
+                            #assert rotate, "%s %s %s" % (self, key, rotate)
                             appendskip(alt.colors[1])
                             # TODO can red here ever happen?
                             if alt.colors[1] == 'b':
@@ -416,7 +524,7 @@ class LogTree:
                         skip = alt.skip
                         break
                     else:
-                        if alt.key+delta < hi and alt.key+delta > lo:
+                        if True: #alt.key+delta < hi and alt.key+delta > lo:
                             appendalt(
                                 LogTree.Alt(
                                     lt=False,
@@ -433,7 +541,7 @@ class LogTree:
                                 off, i, delta+splice+dsplice, weight)
                             weight -= alt.weight
                         else:
-                            assert rotate, "%s %s %s" % (self, key, rotate)
+                            #assert rotate, "%s %s %s" % (self, key, rotate)
                             appendskip(alt.colors[0])
                             #skipped = True
                             if alt.colors[0] == 'b':
@@ -445,7 +553,7 @@ class LogTree:
                         hi = min(hi, alt.key+delta+splice)
                 elif alt.lt:
                     if key < alt.key+delta:
-                        if alt.key+delta > lo and alt.key+delta < hi:
+                        if True: #alt.key+delta > lo and alt.key+delta < hi:
                             appendalt(LogTree.Alt(
                                     lt=False,
                                     key=alt.key+delta+splice+dsplice,
@@ -460,7 +568,7 @@ class LogTree:
                                 off, i, delta+splice+dsplice, weight)
                             weight = alt.weight
                         else:
-                            assert rotate, "%s %s %s" % (self, key, rotate)
+                            #assert rotate, "%s %s %s" % (self, key, rotate)
                             appendskip(alt.colors[1])
                             if alt.colors[1] == 'b':
                                 skipped += 1
@@ -475,7 +583,7 @@ class LogTree:
                         skip = alt.skip
                         break
                     else:
-                        if alt.key+delta > lo and alt.key+delta < hi:
+                        if True: #alt.key+delta > lo and alt.key+delta < hi:
                             appendalt(
                                 LogTree.Alt(
                                     lt=True,
@@ -492,7 +600,7 @@ class LogTree:
                                 off, i, delta, weight)
                             weight -= alt.weight
                         else:
-                            assert rotate, "%s %s %s" % (self, key, rotate)
+                            #assert rotate, "%s %s %s" % (self, key, rotate)
                             appendskip(alt.colors[0])
                             if alt.colors[0] == 'b':
                                 skipped += 1
