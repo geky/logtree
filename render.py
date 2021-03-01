@@ -23,20 +23,26 @@ def render(tree, output):
 
     for i, node in enumerate(tree.nodes):
         #G.add_node(i)
-        column_labels[i] = '%s%s: %s' % (
-            'c' if node.type == 'create' else
-            'd' if node.type == 'delete' else
-            '',
-            node.key, node.value)
+        column_labels[i] = ('%s%s: %s' % (
+                'c' if node.type == 'create' else
+                'd' if node.type == 'delete' else
+                '',
+                node.key, node.value)
+            if not node.stub else None)
         heights[i] = 0
 
         for j, alt in enumerate(node.alts):
-            heights[i] = max(heights.get(i, 0), j+1)
+            if not node.stub:
+                heights[i] = max(heights.get(i, 0), j+1)
             G.add_node((i, j))
 #            if j != 0:
 #                G.add_edge((i, j-1), (i, j), color='b')
-            G.add_edge((i, j), (i, j+1), color=alt.colors[0])
-            G.add_edge((i, j), (alt.off, alt.skip), color=alt.colors[1])
+            if alt.colors[0] != 'x':
+                G.add_edge((i, j), (i, j+1), color=alt.colors[0])
+            if alt.colors[1] != 'x':
+                G.add_edge((i, j), (alt.off, alt.skip), color=alt.colors[1])
+                if tree.nodes[alt.off].stub and alt.off == i-1:
+                    heights[alt.off] = max(heights.get(alt.off, 0), len(node.alts)-j-0.5)
             node_labels[(i, j)] = (
                 "%s%s%s\n%s%s" % (
                     "<" if alt.lt else "≥",
@@ -46,10 +52,11 @@ def render(tree, output):
                     'd' if alt.dont else '.'))
 
         for k, v in heights.items():
-            G.add_node((k, v))
-#            if v != 0:
-#                G.add_edge((k, v-1), (k, v), color='b')
-            node_labels[(k, v)] = column_labels[k]
+            if column_labels[k]:
+                G.add_node((k, v))
+    #            if v != 0:
+    #                G.add_edge((k, v-1), (k, v), color='b')
+                node_labels[(k, v)] = column_labels[k]
 
    #pos = {1: (0, 0), 2: (-1, 0.3), 3: (2, 0.17), 4: (4, 0.255), 5: (5, 0.03)}
 
