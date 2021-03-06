@@ -10,6 +10,7 @@ import itertools as it
 import sys
 
 from logtree import LogTree
+from trender import render as trender
 
 
 def render(tree, output):
@@ -38,12 +39,10 @@ def render(tree, output):
             G.add_edge((i, j), (i, j+1), color=alt.colors[0])
             G.add_edge((i, j), (alt.off, alt.skip), color=alt.colors[1])
             node_labels[(i, j)] = (
-                "%s%s%s\n%s%s" % (
+                "%s%s%s" % (
                     "<" if alt.lt else "≥",
                     alt.key,
-                    '%+d' % alt.delta if alt.delta else '',
-                    ''.join('ᴙ' if r==3 else 'R' if r==2 else 'r' if r else '.' for r in alt.rotates),
-                    'd' if alt.dont else '.'))
+                    '%+d' % alt.delta if alt.delta else ''))
 
         for k, v in heights.items():
             G.add_node((k, v))
@@ -122,6 +121,9 @@ def main(output, *xs):
         else:
             print('unknown action %r' % action)
             sys.exit(1)
+
+    # terminal render early
+    trender(tree)
 
     render(tree, output)
 

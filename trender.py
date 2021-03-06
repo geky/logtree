@@ -13,7 +13,7 @@ COLORS = {
     'y': '\033[33my\033[m'
 }
 
-def render(tree, output):
+def render(tree):
     # build grid
     bounds = (0, 1)
     grid = {}
@@ -32,7 +32,7 @@ def render(tree, output):
         sys.stdout.write('\n')
 
 
-def main(output, *xs):
+def main(*xs):
     if xs in [(), ('append',)]:
         # good for appends
         xs = [3,8,6,1,7,4,5,2,0,9]
@@ -69,7 +69,7 @@ def main(output, *xs):
             print('unknown action %r' % action)
             sys.exit(1)
 
-    render(tree, output)
+    render(tree)
 
 if __name__ == "__main__":
     import sys
