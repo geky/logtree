@@ -10,7 +10,7 @@ import itertools as it
 import sys
 
 from logtree import LogTree
-from trender import render as trender
+from trender import trender
 
 
 def render(tree, output):

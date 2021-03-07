@@ -13,7 +13,7 @@ COLORS = {
     'y': '\033[33my\033[m'
 }
 
-def render(tree):
+def tgrid(tree):
     # build grid
     bounds = (0, 1)
     grid = {}
@@ -24,12 +24,21 @@ def render(tree):
         for y, alt in enumerate(reversed(node.alts)):
             bounds = (bounds[0], max(bounds[1], y+1+1))
             grid[(x, y+1)] = ''.join(COLORS[c] for c in reversed(alt.colors))
-        
+
+    return bounds, grid
+
+def tprint(bounds, grid):
     # print
     for y in reversed(range(bounds[1])):
         for x in range(bounds[0]):
             sys.stdout.write(grid.get((x, y), '  '))
         sys.stdout.write('\n')
+
+    return bounds
+
+def trender(tree):
+    grid, bounds = tgrid(tree)
+    return tprint(grid, bounds)
 
 
 def main(*xs):
@@ -69,7 +78,7 @@ def main(*xs):
             print('unknown action %r' % action)
             sys.exit(1)
 
-    render(tree)
+    trender(tree)
 
 if __name__ == "__main__":
     import sys
