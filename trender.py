@@ -23,7 +23,7 @@ def tgrid(tree):
 
         for y, alt in enumerate(reversed(node.alts)):
             bounds = (bounds[0], max(bounds[1], y+1+1))
-            grid[(x, y+1)] = ''.join(COLORS[c] for c in reversed(alt.colors))
+            grid[(x, y+1)] = COLORS['b'] + COLORS[alt.color]
 
     return bounds, grid
 

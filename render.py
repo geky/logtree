@@ -19,11 +19,9 @@ def render(tree, output):
     heights = {}
     column_labels = {}
     node_labels = {}
-    #edge_labels = {}
     edge_colors = []
 
     for i, node in enumerate(tree.nodes):
-        #G.add_node(i)
         column_labels[i] = '%s%s: %s' % (
             'c' if node.type == 'create' else
             'd' if node.type == 'delete' else
@@ -34,23 +32,16 @@ def render(tree, output):
         for j, alt in enumerate(node.alts):
             heights[i] = max(heights.get(i, 0), j+1)
             G.add_node((i, j))
-#            if j != 0:
-#                G.add_edge((i, j-1), (i, j), color='b')
-            G.add_edge((i, j), (i, j+1), color=alt.colors[0])
-            G.add_edge((i, j), (alt.off, alt.skip), color=alt.colors[1])
+            G.add_edge((i, j), (i, j+1), color=alt.color)
+            G.add_edge((i, j), (alt.off, alt.skip), color='b')
             node_labels[(i, j)] = (
-                "%s%s%s" % (
+                "%s%s" % (
                     "<" if alt.lt else "≥",
-                    alt.key,
-                    '%+d' % alt.delta if alt.delta else ''))
+                    alt.key))
 
         for k, v in heights.items():
             G.add_node((k, v))
-#            if v != 0:
-#                G.add_edge((k, v-1), (k, v), color='b')
             node_labels[(k, v)] = column_labels[k]
-
-   #pos = {1: (0, 0), 2: (-1, 0.3), 3: (2, 0.17), 4: (4, 0.255), 5: (5, 0.03)}
 
     #plt.tight_layout(pad=0)
     plt.figure(figsize=(10 + len(tree.nodes), 7))
