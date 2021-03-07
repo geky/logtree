@@ -150,6 +150,29 @@ class LogTree:
             # keep colors as they were
             alts[a].colors, alts[b].colors = alts[b].colors, alts[a].colors
 
+        def recolor(alts):
+            # recolor?
+            alts[-1].colors = ('b','b')
+            if len(alts) >= 2:
+                assert alts[-2].colors[0] == 'b'
+                alts[-2].colors = ('r','b')
+                if len(alts) >= 3 and alts[-3].colors[0] == 'r':
+                    alts[-3].colors = ('y','b')
+
+                    # rotate to prepare split?
+                    if alts[-3].lt != alts[-2].lt:
+                        if alts[-3].lt == alts[-1].lt:
+                            swap(alts, -1, -2)
+                            log_append('RLR %s %s %s' % (
+                                alts[-3], alts[-2], alts[-1]))
+                        elif alts[-2].lt == alts[-1].lt:
+                            swap(alts, -2, -3)
+                            swap(alts, -1, -2)
+                            log_append('RLL %s %s %s' % (
+                                alts[-3], alts[-2], alts[-1]))
+                        else:
+                            assert False
+
         # build alts, in theory we only need a bounded number of these
         # in RAM to handle rebalancing
         alts = []
@@ -160,7 +183,6 @@ class LogTree:
 
         while True:
             if hasattr(self, 'iters'):
-                # TODO increment iters/iters2 correctly?
                 self.iters += 1
 
             node = self.nodes[off]
@@ -185,7 +207,6 @@ class LogTree:
                     alts.pop(-1)
                     log_append('P lo=%s hi=%s' % (lo, hi))
 
-                # TODO are these all exclusive?
                 # split?
                 if len(alts) >= 2 and alts[-2].colors[0] == 'y':
                     assert yellow_edge is not None
@@ -209,12 +230,7 @@ class LogTree:
                         log_append('S %s' % (alts[-1]))
 
                     # recolor?
-                    alts[-1].colors = ('b','b')
-                    if len(alts) >= 2:
-                        assert alts[-2].colors[0] == 'b'
-                        alts[-2].colors = ('r','b')
-                        if len(alts) >= 3 and alts[-3].colors[0] == 'r':
-                            alts[-3].colors = ('y', 'b')
+                    recolor(alts)
 
                 # follow single alt?
                 if alts[-1].colors[0] == 'b' and alts[-1].follow(key):
@@ -230,46 +246,17 @@ class LogTree:
                     swap(alts, -1, -2)
                     log_append('R %s %s' % (alts[-2], alts[-1]))
 
-                # rotate to prepare split?
-                if len(alts) >= 3 and alts[-3].colors[0] == 'y':
-                    assert alts[-2].colors[0] == 'r'
-                    if alts[-3].lt != alts[-2].lt:
-                        if alts[-3].lt == alts[-1].lt:
-                            swap(alts, -1, -2)
-                            log_append('RLR %s %s %s' % (
-                                alts[-3], alts[-2], alts[-1]))
-                        elif alts[-2].lt == alts[-1].lt:
-                            swap(alts, -2, -3)
-                            swap(alts, -1, -2)
-                            log_append('RLL %s %s %s' % (
-                                alts[-3], alts[-2], alts[-1]))
+                # reduce bounds based on all edges we could have taken
+                if alts[-1].colors[0] == 'b':
+                    for alt in alts[-3:]:
+                        if not alt.lt:
+                            lo, hi = lo, min(hi, alt.key)
                         else:
-                            assert False
+                            lo, hi = max(lo, alt.key), hi
 
                 # track yellow offset in case of split
                 if alts[-1].colors[0] == 'y':
                     yellow_edge = (off, skip-1)
-
-                # reduce bounds based on all edges we could have taken
-                # TODO but this is real ugly, can we simplify this
-                # somehow?
-                if alts[-1].colors[0] == 'b':
-                    if not alts[-1].lt:
-                        lo, hi = lo, min(hi, alts[-1].key)
-                    else:
-                        lo, hi = max(lo, alts[-1].key), hi
-
-                    if len(alts) >= 2:
-                        if not alts[-2].lt:
-                            lo, hi = lo, min(hi, alts[-2].key)
-                        else:
-                            lo, hi = max(lo, alts[-2].key), hi
-
-                        if len(alts) >= 3:
-                            if not alts[-3].lt:
-                                lo, hi = lo, min(hi, alts[-3].key)
-                            else:
-                                lo, hi = max(lo, alts[-3].key), hi
 
                 # this could be simplified but we want to track iters/iters2
                 if off != off_ or skip != skip_:
@@ -289,36 +276,10 @@ class LogTree:
                             random=0,
                             colors=('b','b')))
                     log_append('A %s' % alts[-1])
-
-                    # note, this could be deduplicated with the recoloring
-                    # above, but then we couldn't measure the iters/iters2
-                    # separation easily
+                    self.count += 1
 
                     # recolor?
-                    alts[-1].colors = ('b','b')
-                    if len(alts) >= 2:
-                        assert alts[-2].colors[0] == 'b'
-                        alts[-2].colors = ('r','b')
-                        if len(alts) >= 3 and alts[-3].colors[0] == 'r':
-                            alts[-3].colors = ('y', 'b')
-
-                    # rotate to prepare split?
-                    if len(alts) >= 3 and alts[-3].colors[0] == 'y':
-                        assert alts[-2].colors[0] == 'r'
-                        if alts[-3].lt != alts[-2].lt:
-                            if alts[-3].lt == alts[-1].lt:
-                                swap(alts, -1, -2)
-                                log_append('RLR %s %s %s' % (
-                                    alts[-3], alts[-2], alts[-1]))
-                            elif alts[-2].lt == alts[-1].lt:
-                                swap(alts, -2, -3)
-                                swap(alts, -1, -2)
-                                log_append('RLL %s %s %s' % (
-                                    alts[-3], alts[-2], alts[-1]))
-                            else:
-                                assert False
-
-                    self.count += 1
+                    recolor(alts)
 
                 break
 
