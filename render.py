@@ -35,9 +35,10 @@ def render(tree, output):
             G.add_edge((i, j), (i, j+1), color=alt.color)
             G.add_edge((i, j), (alt.off, alt.skip), color='b')
             node_labels[(i, j)] = (
-                "%s%s" % (
+                "%s%s\nw%d" % (
                     "<" if alt.lt else "≥",
-                    alt.key))
+                    alt.key,
+                    alt.weight))
 
         for k, v in heights.items():
             G.add_node((k, v))

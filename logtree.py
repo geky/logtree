@@ -62,16 +62,18 @@ class LogTree:
         def clone(self):
             return copy.copy(self)
 
-        def flip(self, off, skip):
+        def flip(self, off, skip, weight):
             off, self.off = self.off, off
             skip, self.skip = self.skip, skip
+            weight, self.weight = self.weight, weight
             self.lt = not self.lt
-            return off, skip
+            return off, skip, weight
 
         def __str__(self):
-            return '%s%s@%s.%s%c' % (
+            return '%s%sw%s@%s.%s%c' % (
                 '<' if self.lt else '≥',
                 self.key,
+                self.weight,
                 self.off, self.skip,
                 self.color)
 
@@ -99,8 +101,8 @@ class LogTree:
 
     def append(self, key, value, type=None):
         if not self.nodes:
-            self.count += 1
             self.nodes.append(LogTree.Node(key, value, type=type, alts=[]))
+            self.count += 1
             log_append('N %s' % self.nodes[-1])
             return
 
@@ -139,6 +141,7 @@ class LogTree:
         alts = []
         off = len(self.nodes) - 1
         skip = 0
+        weight = self.count
         lo, hi = float('-inf'), float('inf')
         yellow_edge = None
 
@@ -157,16 +160,19 @@ class LogTree:
 
                 # build alt
                 alts.append(alt.clone())
-                log_append('A %s' % alts[-1])
+                weight -= alts[-1].weight
+                log_append('A %s w=%s' % (alts[-1], weight))
 
                 # prune?
                 if not alts[-1].inbounds(lo, hi):
+                    assert weight == 0
                     if len(alts) >= 2:
                         assert alts[-2].color == 'y'
                         alts[-2].color = 'b'
                     off, skip = alts[-1].off, alts[-1].skip
+                    weight = alts[-1].weight
                     alts.pop(-1)
-                    log_append('P lo=%s hi=%s' % (lo, hi))
+                    log_append('P lo=%s hi=%s w=%s' % (lo, hi, weight))
 
                 # split?
                 if len(alts) >= 2 and alts[-2].color == 'y':
@@ -175,20 +181,24 @@ class LogTree:
                         # swap so central branch is split, but by following
                         # this split forms naturally
                         swap(alts, -2, -1)
-                        alts[-2].flip(off, skip)
+                        _, _, weight = alts[-2].flip(off, skip, weight)
+                        # TODO this is nice and clean, but maybe we should
+                        # revert to deduplication to avoid extra storage reads
+                        # in practice
                         off, skip = yellow_edge
-                        yellow_edge = None
+                        weight += alts[-1].weight
                         alts.pop(-1)
-                        log_append('S %s' % (alts[-1]))
+                        log_append('S1 %s w=%s' % (alts[-1], weight))
                     else:
                         # we need to force a split in this case, but we can
                         # reuse our history as long as we prune during later
                         # appends
                         swap(alts, -2, -1)
                         alts[-2].off, alts[-2].skip = yellow_edge
-                        yellow_edge = None
+                        alts[-2].weight += alts[-1].weight
                         alts.pop(-1)
-                        log_append('S %s' % (alts[-1]))
+                        log_append('S2 %s w=%s' % (alts[-1], weight))
+                    yellow_edge = None
 
                     # recolor?
                     recolor(alts)
@@ -196,16 +206,17 @@ class LogTree:
                 # follow single alt?
                 if alts[-1].color == 'b' and alts[-1].follow(key):
                     # flip
-                    off, skip = alts[-1].flip(off, skip)
+                    off, skip, weight = alts[-1].flip(off, skip, weight)
+                    log_append('F %s w=%s' % (alts[-1], weight))
 
                 # follow red alt?
                 if len(alts) >= 2 and alts[-2].follow(key):
                     assert alts[-2].color != 'b'
                     # flip
-                    off, skip = alts[-2].flip(off, skip)
+                    off, skip, weight = alts[-2].flip(off, skip, weight)
                     # swap
                     swap(alts, -1, -2)
-                    log_append('R %s %s' % (alts[-2], alts[-1]))
+                    log_append('R %s %s w=%s' % (alts[-2], alts[-1], weight))
 
                 # reduce bounds based on all edges we could have taken
                 if alts[-1].color == 'b':
@@ -231,8 +242,9 @@ class LogTree:
                             key=key if node.key < key else node.key,
                             off=off,
                             skip=len(node.alts),
-                            color='b'))
-                    log_append('A %s' % alts[-1])
+                            color='b',
+                            weight=1))
+                    log_append('A %s %s' % (alts[-1], weight))
                     self.count += 1
 
                     # recolor?
