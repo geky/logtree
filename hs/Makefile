@@ -1,4 +1,4 @@
-TARGET = logtree
+TARGET = rbydtree
 MAIN = Main.hs
 SRC = $(wildcard *.hs)
 
@@ -10,6 +10,10 @@ override GHCFLAGS += -rtsopts
 override GHCFLAGS += -fspecialise-aggressively
 override GHCFLAGS += -fexpose-all-unfoldings
 override GHCFLAGS += -Wno-unsupported-llvm-version
+override GHCFLAGS += -Wincomplete-record-updates
+override GHCFLAGS += -Wincomplete-uni-patterns
+override GHCFLAGS += -Wcompat
+override GHCFLAGS += -Wredundant-constraints
 
 .PHONY: all build
 all build: $(TARGET)
