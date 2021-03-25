@@ -14,7 +14,6 @@ override GHCFLAGS += -Wincomplete-record-updates
 override GHCFLAGS += -Wincomplete-uni-patterns
 override GHCFLAGS += -Wcompat
 override GHCFLAGS += -Wredundant-constraints
-override GHCFLAGS += -threaded
 
 .PHONY: all build
 all build: $(TARGET)
@@ -24,7 +23,7 @@ $(TARGET): $(SRC)
 
 .PHONY: run
 run:
-	./$(TARGET) +RTS -M100m -N6
+	./$(TARGET) +RTS -M100m
 
 .PHONY: clean
 clean:

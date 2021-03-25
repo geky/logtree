@@ -7,24 +7,6 @@ import Control.Monad
 import qualified Data.List as L
 import System.Exit
 import qualified Data.Foldable as F
-import Control.Parallel.Strategies
-import GHC.Conc (numCapabilities) -- number of cores
-
--- parallel operations
-chunksOf :: Int -> [a] -> [[a]]
-chunksOf _ [] = []
-chunksOf n xs = take n xs : chunksOf n (drop n xs)
-
-fold' :: (Foldable f, Monoid m) => f m -> m
-fold' = F.foldMap' id
-
--- parallel fold that works on infinite lists, works by breaking
--- up list into chunks which are each processed in parallel
-foldMapPar' :: Monoid m => (a -> m) -> [a] -> m
-foldMapPar' f xs = fold' chunks
-  where
-    chunks = map (foldMap f) (chunksOf 1024 xs)
-        `using` parBuffer numCapabilities rseq
 
 -- convenience result type
 data Result k v
@@ -91,7 +73,7 @@ testTree perm = foldMap check perm
         v = lookup k tree
 
 testTrees :: Int -> Result Int Int
-testTrees n = foldMapPar' testTree $ L.permutations [1..n]
+testTrees n = F.foldMap' testTree $ L.permutations [1..n]
 
 
 -- entry point
