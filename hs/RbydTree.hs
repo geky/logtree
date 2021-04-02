@@ -7,6 +7,8 @@
     DuplicateRecordFields,
     ScopedTypeVariables
 #-}
+-- TODO remove me
+{-# OPTIONS_GHC -Wno-unused-imports -Wno-redundant-constraints #-}
 
 module RbydTree
     ( RbydTree
@@ -65,6 +67,7 @@ import Data.Foldable (foldl', foldr')
 import Control.Applicative ((<|>))
 import Data.List (intercalate)
 import qualified Data.Map.Strict as Map
+import Debug.Trace
 
 -- miscellany
 aligndown :: Integral n => n -> n -> n
@@ -81,6 +84,10 @@ infixl 3 ?
 data Dir = Lt | Gt
     deriving (Show, Eq)
 
+flip' :: Dir -> Dir
+flip' Lt = Gt
+flip' Gt = Lt
+
 data Color = R | B
     deriving (Show, Eq)
 
@@ -96,14 +103,6 @@ follow2 :: (Ord k, Num k) => Alt k v -> Alt k v -> (k, k) -> Bool
 follow2 (Alt _ Lt w1 _) (Alt _ Lt w2 _) (lo, _ ) = lo < w1+w2
 follow2 (Alt _ Gt w1 _) (Alt _ Gt w2 _) (_ , hi) = hi < w1+w2
 follow2 _               _               (_ , _ ) = False
-
-flip :: (Num k) => Alt k v -> (k, k) -> Node k v -> Alt k v
-flip (Alt c Lt w _) (lo,hi) = Alt c Gt ((lo+hi+1)-w)
-flip (Alt c Gt w _) (lo,hi) = Alt c Lt ((lo+hi+1)-w)
-
-flip2 :: (Num k) => Alt k v -> Alt k v -> (k, k) -> Node k v -> Alt k v
-flip2 (Alt c Lt w1 _) (Alt _ _ w2 _) (lo, hi) = Alt c Gt ((lo+hi+1)-(w1+w2))
-flip2 (Alt c Gt w1 _) (Alt _ _ w2 _) (lo, hi) = Alt c Lt ((lo+hi+1)-(w1+w2))
 
 cull :: (Ord k, Num k) => Alt k v -> (k, k) -> (k, k)
 cull (Alt _ Lt w _) (lo, hi)
@@ -181,17 +180,17 @@ empty = RbydTree{t_chunkSize = Nothing, t_history = []}
 emptyChunky :: k -> RbydTree k v
 emptyChunky cz = RbydTree{t_chunkSize = Just cz, t_history = []}
 
-singleton :: Integral k => k -> v -> RbydTree k v
+singleton :: (Integral k, Show k, Show v) => k -> v -> RbydTree k v
 singleton k v = append k v $ empty
 
-singletonChunky :: Integral k => k -> k -> v -> RbydTree k v
+singletonChunky :: (Integral k, Show k, Show v) => k -> k -> v -> RbydTree k v
 singletonChunky cz k v = append k v $ emptyChunky cz
 
 -- append
-t_append :: forall k v. Integral k
+t_append :: forall k v. (Integral k, Show k, Show v)
     => k -> Maybe v -> k -> RbydTree k v
     -> (RbydTree k v, k)
-t_append k v delta tree = (tree', delta')
+t_append k v delta tree = {-trace "hi"-} (tree', delta')
   where
     cz = t_chunkSize tree
     w = t_weight tree
@@ -212,24 +211,24 @@ t_append k v delta tree = (tree', delta')
         Nothing   -> (Tag k v, adj_delta)
         Just alts -> append' alts (biweight tree adj_k) alts []
 
-    append' :: Node k v -> (k, k) -> Node k v -> [Alt k v] -> (Node k v, k)
-    append' yin (lo,hi) (alt ::: alts) nalts
-        = append' yin' (lo',hi') alts' nalts'
+    append' :: Node k v
+        -> (k, k) -> Node k v -> [Alt k v]
+        -> (Node k v, k)
+    append' yin lh (alt ::: alts) nalts
+        = append' yin' lh' alts' nalts'
       where
-        ((lo',hi'), alts', nalts')
-            =   prune      (lo,hi)      (alt:nalts)
-            <|> ysplit yin (lo,hi) alts (alt:nalts)
-            ?   rflip      (lo,hi) alts (alt:nalts)
+        -- find new weights, alts (to chase), and build alts
+        (lh', alts', nalts') = prune yin lh alts (alt:nalts)
         -- track incoming edge
         yin' = case nalts' of
             (Alt B _ _ _):_ -> alts'
             _               -> yin
-    append' _ (lo,hi) alts@(Tag k' _) nalts
+    append' _ lh@(lo,hi) alts@(Tag k' _) nalts
         = (tag k v nalts', clamped_delta)
       where
         fixed_k = fix tree (adj_k-lo) k'
         clamped_delta = max adj_delta (-(hi+1))
-        nalts' = bsplit fixed_k (lo,hi) alts nalts
+        nalts' = bsplit fixed_k lh alts nalts
 
     -- recolor nodes?
     recolor :: [Alt k v] -> [Alt k v]
@@ -242,67 +241,71 @@ t_append k v delta tree = (tree', delta')
     recolor []         = []
 
     -- prune unfollowable edges?
-    prune :: (k, k) -> [Alt k v]
-        -> Maybe ((k, k), Node k v, [Alt k v])
-    prune (lo,hi) ((Alt _ _ w1 alts'):a2@(Alt R _ w2 _):as)
-        -- may need to process recolored alt
-        -- TODO can this just be bflip?
-        | w1+w2 >= lo+hi+1 = Just $ rflip (lo,hi) alts' (black a2 : as)
-    prune (lo,hi) ((Alt _ _ w1 alts'):as)
-        | w1    >= lo+hi+1 = Just $ done  (lo,hi) alts' as
-    prune _ _ = Nothing
+    prune :: Node k v
+        -> (k, k) -> Node k v -> [Alt k v]
+        -> ((k, k), Node k v, [Alt k v])
+    prune yin lh@(lo,hi) alts nalts = case nalts of
+        (Alt _ _ w1 alts'):a2@(Alt R _ w2 _):as | w1+w2 >= lo+hi+1
+            -> rflop lh alts' (black a2 : as)
+        (Alt _ _ w1 alts'):as | w1 >= lo+hi+1
+            -> done  lh alts' as
+
+        -- continue
+        as  -> ysplit yin lh alts as
 
     -- split yellow alts?
-    ysplit :: Node k v -> (k, k) -> Node k v -> [Alt k v]
-        -> Maybe ((k, k), Node k v, [Alt k v])
-    ysplit yin (lo,hi) alts (a1@(Alt R d1 w1 alts'):a2@(Alt R _ w2 _):as)
-        -- follow split
-        -- TODO can the be reduced to rflip?
-        | follow2 a1 a2 (lo,hi)
-            = let a1' = flip2 a1 a2 (lo,hi) alts
-                  (lo',hi') = cull a1' (lo,hi)
-              in Just $ rflip (lo',hi') alts' (black a2 : (recolor (a1':as)))
-        -- force split
-        | otherwise
-            = let a' = Alt B d1 (w1+w2) yin
-                  (lo',hi') = cull a' (lo,hi)
-              in Just $ done  (lo',hi') alts  (recolor (a':as))
-    ysplit _ _ _ _ = Nothing
-
-    -- flip/follow red alts?
-    rflip :: (k, k) -> Node k v -> [Alt k v]
+    ysplit :: Node k v
+        -> (k, k) -> Node k v -> [Alt k v]
         -> ((k, k), Node k v, [Alt k v])
-    rflip (lo,hi) alts (a1@(Alt c1 _ _ alts'):a2@(Alt R _ _ _):as)
-        | follow a2 (lo,hi) = if
-            | follow2 a1 a2 (lo,hi)
-                -> let a1' = flip2 a1 a2 (lo,hi) alts
-                       (lo',hi') = cull a1' (lo,hi)
-                   in bflip (lo',hi') alts' (color c1 a2 : red a1' : as)
+    ysplit yin lh@(lo,hi) alts nalts = case nalts of
+        a1@(Alt R d1 w1 alts'):a2@(Alt R _ w2 _):as
+            -- follow split
+            | follow2 a1 a2 lh
+                -> let a1' = Alt B (flip' d1) ((lo+hi+1)-(w1+w2)) alts
+                   in rflop (cull a1' lh) alts' (black a2 : (recolor (a1':as)))
+            -- force split
             | otherwise
-                -> let (lo',hi') = cull a1 (lo,hi)
-                   in bflip (lo',hi') alts  (color c1 a2 : red a1 : as)
-    rflip (lo,hi) alts (a1:a2@(Alt R _ _ _):as)
-        = let (lo',hi') = cull a2 (lo,hi)
-          in bflip (lo',hi') alts (a1:a2:as)
-    rflip (lo,hi) alts as = bflip (lo,hi) alts as
+                -> let a' = Alt B d1 (w1+w2) yin
+                   in done  (cull a'  lh) alts  (recolor (a':as))
+
+        -- continue
+        as -> rflop lh alts as
+
+    -- flop red alts?
+    rflop :: (k, k) -> Node k v -> [Alt k v]
+        -> ((k, k), Node k v, [Alt k v])
+    rflop lh@(lo,hi) alts nalts = case nalts of
+        a1@(Alt B d1 w1 alts'):a2@(Alt R _ w2 _):as
+            | follow a2 lh && follow2 a1 a2 lh
+                -> let a1' = Alt R (flip' d1) ((lo+hi+1)-(w1+w2)) alts
+                   in bflip (cull a1' lh) alts' (black a2 : red a1' : as)
+            | follow a2 lh
+                ->    bflip (cull a1  lh) alts  (black a2 : red a1  : as)
+            | otherwise
+                ->    bflip (cull a2  lh) alts  (a1:a2:as)
+
+        -- continue
+        as -> bflip lh alts as
 
     -- flip/follow black alts?
     bflip :: (k, k) -> Node k v -> [Alt k v]
         -> ((k, k), Node k v, [Alt k v])
-    bflip (lo,hi) alts (a1@(Alt B _ _ alts'):as)
-        | follow a1 (lo,hi)
-            = let a1' = flip a1 (lo,hi) alts
-                  (lo',hi') = cull a1' (lo,hi)
-              in done (lo',hi') alts' (a1':as)
-        | otherwise
-            = let (lo',hi') = cull a1 (lo,hi)
-              in done (lo',hi') alts  (a1 :as)
-    bflip (lo,hi) alts as = done (lo,hi) alts as
+    bflip lh@(lo,hi) alts nalts = case nalts of
+        a1@(Alt B d1 w1 alts'):as
+            -- | follow_ a1 lh /= f1 = error $ "what " ++ show (a1:as)
+            | follow a1 lh
+                -> let a1' = Alt B (flip' d1) ((lo+hi+1)-w1) alts
+                   in done (cull a1' lh) alts' (a1':as)
+            | otherwise
+                ->    done (cull a1  lh) alts  (a1 :as)
+
+        -- continue
+        as -> done lh alts as
 
     -- base case for making the code a bit cleaner
     done :: (k, k) -> Node k v -> [Alt k v]
         -> ((k, k), Node k v, [Alt k v])
-    done (lo,hi) alts as = ((lo,hi), alts, as)
+    done lh alts as = (lh, alts, as)
 
     -- split leaf node?
     bsplit :: k -> (k, k) -> Node k v -> [Alt k v] -> [Alt k v]
@@ -313,25 +316,25 @@ t_append k v delta tree = (tree', delta')
         | k' > adj_k                  = recolor (Alt B Gt hi        alts : as)
         | otherwise                   = as
     
-append :: Integral k => k -> v -> RbydTree k v -> RbydTree k v
+append :: (Integral k, Show k, Show v) => k -> v -> RbydTree k v -> RbydTree k v
 append k v tree = tree'
   where
     (tree', _) = t_append k (Just v) 0 tree
 
-remove :: Integral k => k -> RbydTree k v -> RbydTree k v
+remove :: (Integral k, Show k, Show v) => k -> RbydTree k v -> RbydTree k v
 remove k tree = tree'
   where
     (tree', _) = t_append k Nothing 0 tree
 
 -- create/delete for array-like insertions
-create :: Integral k => k -> v -> RbydTree k v -> RbydTree k v
+create :: (Integral k, Show k, Show v) => k -> v -> RbydTree k v -> RbydTree k v
 create k v tree = case t_chunkSize tree of
     Nothing -> error "attempted to create with no chunkSize"
     Just cz -> tree'
       where
         (tree', _) = t_append k (Just v) cz tree
 
-delete :: forall k v. Integral k => k -> RbydTree k v -> RbydTree k v
+delete :: forall k v. (Integral k, Show k, Show v) => k -> RbydTree k v -> RbydTree k v
 delete k tree = case t_chunkSize tree of
     Nothing -> error "attempted to delete with no chunkSize"
     Just cz -> delete' cz tree
@@ -349,10 +352,10 @@ t_lookup k tree = case t_head tree of
     Just alts -> lookup' (biweight tree k) alts
   where
     lookup' :: (k, k) -> Node k v -> (k, Maybe v, (k, k))
-    lookup' (lo,hi) (alt@(Alt _ _ _ alts') ::: alts)
-        | follow alt (lo,hi) = lookup' (cull alt (lo,hi)) alts'
-        | otherwise          = lookup' (cull alt (lo,hi)) alts
-    lookup' (lo,hi) (Tag k' v') = (fixed_k, v', (lo,hi))
+    lookup' lh        (alt@(Alt _ _ _ alts') ::: alts)
+        | follow alt lh = lookup' (cull alt lh) alts'
+        | otherwise     = lookup' (cull alt lh) alts
+    lookup' lh@(lo,_) (Tag k' v') = (fixed_k, v', lh)
       where
         fixed_k = fix tree (k-lo) k'
 
@@ -423,14 +426,14 @@ size tree = P.length $ assocs tree
 toList :: Integral k => RbydTree k v -> [(k, v)]
 toList tree = assocs tree
 
-fromList :: Integral k => [(k, v)] -> RbydTree k v
+fromList :: (Integral k, Show k, Show v) => [(k, v)] -> RbydTree k v
 fromList = foldl' (P.flip $ uncurry append) empty
 
-fromListChunky :: Integral k => k -> [(k, v)] -> RbydTree k v
+fromListChunky :: (Integral k, Show k, Show v) => k -> [(k, v)] -> RbydTree k v
 fromListChunky cz = foldl' (P.flip $ uncurry append) (emptyChunky cz)
 
 -- compact RbydTree, keeping the effective tree but resetting history
-compact :: Integral k => RbydTree k v -> RbydTree k v
+compact :: (Integral k, Show k, Show v) => RbydTree k v -> RbydTree k v
 compact tree = foldlWithKey' (\t k v -> append k v t) empty' tree
   where empty' = tree{t_history = []}
 
@@ -454,7 +457,7 @@ chunkSize tree = t_chunkSize tree
 
 
 -- debugging things
-dump :: forall k v. (Show k, Show v) => RbydTree k v -> String
+dump :: forall k v. (Show k, Show v, Show v) => RbydTree k v -> String
 dump tree
     =  "{"
     ++ intercalate ", " (reverse $ map (n_dump . snd) $ t_history tree)

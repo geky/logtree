@@ -7,8 +7,42 @@ import Control.Monad
 import qualified Data.List as L
 import System.Exit
 import qualified Data.Foldable as F
+import Data.Bits
+import qualified Data.Set as S
+
+-- quick deterministic random number generator
+-- build on xorshif32
+xorshift32 :: Int -> [Int]
+xorshift32 range = xorshift32' 42
+  where
+    xorshift32' x = (x''' `mod` range) : xorshift32' x'''
+      where
+        x'   = x   `xor` (x   `shift` 13   )
+        x''  = x'  `xor` (x'  `shift` (-17))
+        x''' = x'' `xor` (x'' `shift` 5    )
+
+-- make unordered list uniqe
+uniq :: Ord a => [a] -> [a]
+uniq xs = uniq' S.empty xs
+  where
+    uniq' s (x:xs)
+        | S.member x s = uniq' s xs
+        | otherwise    = x : uniq' (S.insert x s) xs
+    uniq' _ [] = []
 
 -- convenience result type
+data Failure k v
+    = FailedLookup
+        { r_badKey :: !k
+        , r_foundValue :: !(Maybe v)
+        , r_expectedValue :: !(Maybe v)
+        }
+    | FailedAssocs
+        { r_foundAssocs :: ![(k, v)]
+        , r_expectedAssocs :: ![(k, v)]
+        }
+    deriving Show
+
 data Result k v
     = NoResult
     | Success
@@ -17,10 +51,10 @@ data Result k v
         , r_worstTree :: !(RbydTree k v)
         }
     | Failure
-        { r_badTree :: !(RbydTree k v)
-        , r_badKey :: !k
-        , r_badValue :: !(Maybe v)
-        , r_expectedValue :: !(Maybe v)
+        { r_minHeight :: !Int
+        , r_maxHeight :: !Int
+        , r_worstTree :: !(RbydTree k v)
+        , r_failure :: Failure k v
         }
     deriving Show
 
@@ -30,15 +64,16 @@ success !tree = Success
     , r_maxHeight = h
     , r_worstTree = tree
     }
-    where h = height tree
+  where h = height tree
 
-failure :: RbydTree k v -> k -> Maybe v -> Maybe v -> Result k v
-failure !tree badK badV expectedV = Failure
-    { r_badTree = tree
-    , r_badKey = badK
-    , r_badValue = badV
-    , r_expectedValue = expectedV
+failure :: RbydTree k v -> Failure k v -> Result k v
+failure !tree failure = Failure
+    { r_minHeight = h
+    , r_maxHeight = h
+    , r_worstTree = tree
+    , r_failure = failure
     }
+  where h = height tree
 
 instance Semigroup (Result k v) where
     (<>) r            NoResult     = r
@@ -57,20 +92,41 @@ instance Monoid (Result k v) where
     mempty = NoResult
 
 -- testing
+checkLookup :: (Integral k, Eq v)
+    => k -> Maybe v -> RbydTree k v -> Result k v
+checkLookup k v tree
+    | v' == v   = success tree
+    | otherwise = failure tree $ FailedLookup
+        { r_badKey = k
+        , r_foundValue = v'
+        , r_expectedValue = v
+        }
+  where
+    v' = lookup k tree
+
+checkAssocs :: (Integral k, Eq v)
+    => [(k, v)] -> RbydTree k v -> Result k v
+checkAssocs kvs tree
+    | kvs' == kvs = success tree
+    | otherwise = failure tree $ FailedAssocs
+        { r_foundAssocs = kvs'
+        , r_expectedAssocs = kvs
+        }
+  where
+    kvs' = assocs tree
+
+check :: (Integral k, Eq v)
+    => [(k, v)] -> RbydTree k v -> Result k v
+check kvs tree
+    =  foldMap (\(k, v) -> checkLookup k (Just v) tree) kvs
+    <> checkAssocs kvs tree
+
 testTree :: [Int] -> Result Int Int
-testTree perm = foldMap check perm
+testTree perm = check (L.sort [(x,x) | x <- perm]) tree
   where
     -- build tree
     tree :: RbydTree Int Int
     tree = fromList [(x,x) | x <- perm]
-
-    -- test all lookups
-    check :: Int -> Result Int Int
-    check k
-        | v == Just k = success tree
-        | otherwise   = failure tree k v (Just k)
-      where
-        v = lookup k tree
 
 testTrees :: Int -> Result Int Int
 testTrees n = F.foldMap' testTree $ L.permutations [1..n]
@@ -90,6 +146,35 @@ main = do
     print (assocs tree)
     putStr (trender tree)
 
+    -- test some random trees, don't exit on failure because
+    -- we'd rather let the exhaustive testing find a smaller failure case
+    let n = 40
+    forM_
+        [ ("tested in_order size " ++ show n, [0..n-1])
+        , ("tested reversed size " ++ show n, [n-1,n-2..0])
+        , ("tested random size " ++ show n, take n $ uniq $ xorshift32 (2*n))
+        ]
+        $ \(s, xs) -> do
+            let result = testTree xs
+            case result of
+                NoResult -> return ()
+                r@Success{} -> do
+                    putStrLn s
+                    putStr $ trender (r_worstTree r)
+                f@Failure{} -> do
+                    putStrLn $ case r_failure f of
+                        f@FailedLookup{}
+                            -> "failed lookup k=" ++ show (r_badKey f)
+                            ++ ", found " ++ show (r_foundValue f)
+                            ++ ", expected " ++ show (r_expectedValue f)
+                        f@FailedAssocs{}
+                            -> "failed assocs"
+                            ++ "\nfound " ++ show (r_foundAssocs f)
+                            ++ "\nexpected " ++ show (r_expectedAssocs f)
+                    putStr $ trender (r_worstTree f)
+                    putStrLn $ show (r_worstTree f)
+
+    -- exhaustively test trees
     forM_ [1..] $ \n -> do
         let result = testTrees n
         case result of
@@ -103,11 +188,17 @@ main = do
                     ++ " max " ++ show (r_maxHeight r)
                 putStr $ trender (r_worstTree r)
             f@Failure{} -> do
-                putStrLn $ "failed for k=" ++ show (r_badKey f)
-                    ++ ", expected " ++ show (r_expectedValue f)
-                    ++ ", found " ++ show (r_badValue f)
-                putStr $ trender (r_badTree f)
-                putStrLn $ show (r_badTree f)
+                putStrLn $ case r_failure f of
+                    f@FailedLookup{}
+                        -> "failed lookup k=" ++ show (r_badKey f)
+                        ++ ", found " ++ show (r_foundValue f)
+                        ++ ", expected " ++ show (r_expectedValue f)
+                    f@FailedAssocs{}
+                        -> "failed assocs"
+                        ++ "\nfound " ++ show (r_foundAssocs f)
+                        ++ "\nexpected " ++ show (r_expectedAssocs f)
+                putStr $ trender (r_worstTree f)
+                putStrLn $ show (r_worstTree f)
                 exitFailure
 
     putStrLn "done"
