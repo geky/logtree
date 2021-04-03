@@ -5,7 +5,8 @@ SRC = $(wildcard *.hs)
 GHC ?= ghc
 
 override GHCFLAGS += -W
-override GHCFLAGS += -O2
+override GHCFLAGS += -O1
+#override GHCFLAGS += -O2
 override GHCFLAGS += -rtsopts
 override GHCFLAGS += -fspecialise-aggressively
 override GHCFLAGS += -fexpose-all-unfoldings
@@ -18,6 +19,8 @@ override GHCFLAGS += -Wredundant-constraints
 .PHONY: all build
 all build: $(TARGET)
 
+# let ghc decide if rebuild
+.PHONY: $(TARGET)
 $(TARGET): $(SRC)
 	$(GHC) $(GHCFLAGS) $(MAIN) -o $(TARGET)
 
