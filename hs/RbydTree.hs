@@ -66,6 +66,7 @@ import Data.Maybe
 import Data.Foldable (foldl', foldr')
 import Control.Applicative ((<|>))
 import Control.Arrow
+import Control.Monad
 import Data.List (intercalate)
 import qualified Data.Map.Strict as Map
 import Debug.Trace
@@ -77,8 +78,8 @@ aligndown x alignment = x - (x `mod` alignment)
 alignup :: Integral n => n -> n -> n
 alignup x alignment = aligndown (x + alignment-1) alignment
 
-uncurry3 :: (a -> b -> c -> d) -> (a, b, c) -> d
-uncurry3 f (a, b, c) = f a b c
+_uncurry3 :: (a -> b -> c -> d) -> (a, b, c) -> d
+_uncurry3 f (a, b, c) = f a b c
 
 infixl 3 ? 
 (?) :: Maybe a -> a -> a
@@ -117,8 +118,8 @@ cull (Alt _ Gt w _) (lo, hi)
     | hi < w    = (w-(hi+1), hi)
     | otherwise = (lo,       hi-w)
 
-cull2 :: (Ord k, Num k) => Alt k v -> Alt k v -> (k, k) -> (k, k)
-cull2 a1 a2 = cull a1 . cull a2
+_cull2 :: (Ord k, Num k) => Alt k v -> Alt k v -> (k, k) -> (k, k)
+_cull2 a1 a2 = cull a1 . cull a2
 
 -- change colors
 color :: Color -> Alt k v -> Alt k v
@@ -217,26 +218,29 @@ t_append k v delta tree = (tree', delta')
     tree' = tree{t_history = (w+delta', n') : t_history tree}
     (n', delta') = case t_head tree of
         Nothing   -> (Tag k v, adj_delta)
-        Just alts -> append' alts (biweight tree adj_k) alts []
+        Just alts -> append' alts (alts, biweight tree adj_k, [])
 
-    append' :: Node k v
-        -> (k, k) -> Node k v -> [Alt k v]
+    append'
+        :: Node k v
+        -> (Node k v, (k, k), [Alt k v])
         -> (Node k v, k)
-    append' yin lh (alt ::: alts) nalts = append' yin' lh' alts' nalts'
+    append' yin (alt ::: alts, lh, nalts)
+        = append' yin' (alts', lh', nalts')
       where
         -- find new weights, alts (to chase), and build new alts
-        (lh', alts', nalts')
-            = id ||| uncurry3 (rotate yin)
-            $ prune lh alts (alt : nalts)
+        (alts', lh', nalts')
+            = (id ||| bflip) <<< rflop yin <=< prune
+            $ (alts, lh, alt : nalts)
         -- track incoming edge
         yin' = case nalts' of
             (Alt B _ _ _):_ -> alts'
             _               -> yin
-    append' _ lh@(lo,hi) alts@(Tag k' _) nalts = (tag k v nalts', clamped_delta)
+    append' _ (alts@(Tag k' _), lh@(lo,hi), nalts)
+        = (tag k v nalts', clamped_delta)
       where
         fixed_k = fix tree (adj_k-lo) k'
         clamped_delta = max adj_delta (-(hi+1))
-        nalts' = bsplit fixed_k lh alts nalts
+        nalts' = bsplit (alts, lh, nalts) fixed_k
 
     -- recolor nodes?
     recolor :: [Alt k v] -> [Alt k v]
@@ -250,65 +254,69 @@ t_append k v delta tree = (tree', delta')
 
     -- prune unfollowable edges?
     prune
-        :: (k, k) -> Node k v -> [Alt k v]
+        :: (Node k v, (k, k), [Alt k v])
         -> Either
-            ((k, k), Node k v, [Alt k v])
-            ((k, k), Node k v, [Alt k v])
-    prune lh@(lo,hi) alts nalts = case nalts of
-        (Alt _ _ w1 alts'):a2@(Alt R _ w2 _):as | w1+w2 >= lo+hi+1
-            -> Right (lh, alts', black a2 : as)
-        (Alt _ _ w1 alts'):as | w1 >= lo+hi+1
-            -> Left  (lh, alts', as)
-        as  -> Right (lh, alts,  as)
+            (Node k v, (k, k), [Alt k v])
+            (Node k v, (k, k), [Alt k v])
+    prune (alts, lh@(lo,hi), nalts) = case nalts of
+        (Alt _ _ w1 alts'):a2@(Alt R _ w2 _):as
+            | w1+w2 >= lo+hi+1 -> Right (alts', lh, black a2 : as)
+        (Alt _ _ w1 alts'):as
+            | w1 >= lo+hi+1    -> Left  (alts', lh, as)
+        -- do nothing
+        as -> Right (alts, lh, as)
 
-    -- flip + flop + split
-    rotate
+    -- flop + split
+    rflop
         :: Node k v
-        -> (k, k) -> Node k v -> [Alt k v]
-        -> ((k, k), Node k v, [Alt k v])
-    rotate yin lh@(lo,hi) alts nalts = case nalts of
+        -> (Node k v, (k, k), [Alt k v])
+        -> Either
+            (Node k v, (k, k), [Alt k v])
+            (Node k v, (k, k), [Alt k v])
+    rflop yin (alts, lh@(lo,hi), nalts) = case nalts of
         -- split yellow alts?
-        a1@(Alt R d1 w1 alts1) : a2@(Alt R d2 w2 alts2) : as
+        a1@(Alt R d1 w1 alts1) : a2@(Alt R _ w2 _) : as
             -- follow split
-            | follow2 a1 a2 lh && follow a2 lh
-                -> (cull2 a2f2 a1f lh, alts2, black a2f2 : (recolor (a1f : as)))
             | follow2 a1 a2 lh
-                -> (cull2 a2   a1f lh, alts1, black a2   : (recolor (a1f : as)))
+                -> Right (alts1, cull a1f lh, black a2 : (recolor (a1f : as)))
             -- force split
             | otherwise
-                -> (cull ay lh, alts, recolor (ay : as))
+                -> Left  (alts,  cull ay  lh, recolor (ay : as))
           where
             a1f  = Alt B (flipd d1) ((lo+hi+1)-(w1+w2)) alts
-            a2f2 = Alt R (flipd d2) w1                  alts1
             ay   = Alt B d1         (w1+w2)             yin
         -- flop red alts?
-        a1@(Alt B d1 w1 alts1) : a2@(Alt R d2 w2 alts2) : as
+        a1@(Alt B d1 w1 alts1) : a2@(Alt R _ w2 _) : as
             | follow a2 lh && follow2 a1 a2 lh
-                -> (cull2 a2f2 a1f lh, alts2, black a2f2 : red a1f : as)
+                -> Right (alts1, cull a1f lh, black a2 : red a1f : as)
             | follow a2 lh
-                -> (cull2 a2f  a1  lh, alts2, black a2f  : red a1  : as)
-            | follow2 a1 a2 lh
-                -> (cull2 a1f  a2  lh, alts1, a1f        : a2      : as)
+                -> Right (alts,  cull a1  lh, black a2 : red a1  : as)
             | otherwise
-                -> (cull2 a1   a2  lh, alts,  a1         : a2      : as)
+                -> Right (alts,  cull a2  lh, a1 : a2 : as)
           where
             a1f  = Alt B (flipd d1) ((lo+hi+1)-(w1+w2)) alts
-            a2f  = Alt R (flipd d2) ((lo+hi+1)-(w1+w2)) alts
-            a2f2 = Alt R (flipd d2) w1                  alts1
+        -- do nothing
+        as -> Right (alts, lh, as)
+
+    -- flip
+    bflip
+        :: (Node k v, (k, k), [Alt k v])
+        -> (Node k v, (k, k), [Alt k v])
+    bflip (alts, lh@(lo,hi), nalts) = case nalts of
         -- flip black alts?
         a1@(Alt B d1 w1 alts1) : as
             | follow a1 lh
-                -> (cull a1f lh, alts1, a1f : as)
+                -> (alts1, cull a1f lh, a1f : as)
             | otherwise
-                -> (cull a1  lh, alts,  a1  : as)
+                -> (alts,  cull a1  lh, a1  : as)
           where
             a1f  = Alt B (flipd d1) ((lo+hi+1)-w1) alts
         -- do nothing
-        as -> (lh, alts, as)
+        as -> (alts, lh, as)
 
     -- split leaf node?
-    bsplit :: k -> (k, k) -> Node k v -> [Alt k v] -> [Alt k v]
-    bsplit k' (lo,hi) alts as
+    bsplit :: (Node k v, (k, k), [Alt k v]) -> k -> [Alt k v]
+    bsplit (alts, (lo,hi), as) k'
         | adj_delta > 0 && k' < adj_k = recolor (Alt B Lt (lo+hi+1) alts : as)
         | adj_delta > 0               = recolor (Alt B Gt (lo+hi+1) alts : as)
         | k' < adj_k                  = recolor (Alt B Lt lo        alts : as)
