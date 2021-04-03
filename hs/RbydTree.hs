@@ -7,8 +7,6 @@
     DuplicateRecordFields,
     ScopedTypeVariables
 #-}
--- TODO remove me
-{-# OPTIONS_GHC -Wno-unused-imports -Wno-redundant-constraints #-}
 
 module RbydTree
     ( RbydTree
@@ -64,12 +62,10 @@ import Prelude hiding
     )
 import Data.Maybe
 import Data.Foldable (foldl', foldr')
-import Control.Applicative ((<|>))
 import Control.Arrow
 import Control.Monad
 import Data.List (intercalate)
 import qualified Data.Map.Strict as Map
-import Debug.Trace
 
 -- miscellany
 aligndown :: Integral n => n -> n -> n
@@ -189,14 +185,14 @@ empty = RbydTree{t_chunkSize = Nothing, t_history = []}
 emptyChunky :: k -> RbydTree k v
 emptyChunky cz = RbydTree{t_chunkSize = Just cz, t_history = []}
 
-singleton :: (Integral k, Show k, Show v) => k -> v -> RbydTree k v
+singleton :: Integral k => k -> v -> RbydTree k v
 singleton k v = append k v $ empty
 
-singletonChunky :: (Integral k, Show k, Show v) => k -> k -> v -> RbydTree k v
+singletonChunky :: Integral k => k -> k -> v -> RbydTree k v
 singletonChunky cz k v = append k v $ emptyChunky cz
 
 -- append
-t_append :: forall k v. (Integral k, Show k, Show v)
+t_append :: forall k v. Integral k
     => k -> Maybe v -> k -> RbydTree k v
     -> (RbydTree k v, k)
 t_append k v delta tree = (tree', delta')
@@ -323,25 +319,25 @@ t_append k v delta tree = (tree', delta')
         | k' > adj_k                  = recolor (Alt B Gt hi        alts : as)
         | otherwise                   = as
     
-append :: (Integral k, Show k, Show v) => k -> v -> RbydTree k v -> RbydTree k v
+append :: Integral k => k -> v -> RbydTree k v -> RbydTree k v
 append k v tree = tree'
   where
     (tree', _) = t_append k (Just v) 0 tree
 
-remove :: (Integral k, Show k, Show v) => k -> RbydTree k v -> RbydTree k v
+remove :: Integral k => k -> RbydTree k v -> RbydTree k v
 remove k tree = tree'
   where
     (tree', _) = t_append k Nothing 0 tree
 
 -- create/delete for array-like insertions
-create :: (Integral k, Show k, Show v) => k -> v -> RbydTree k v -> RbydTree k v
+create :: Integral k => k -> v -> RbydTree k v -> RbydTree k v
 create k v tree = case t_chunkSize tree of
     Nothing -> error "attempted to create with no chunkSize"
     Just cz -> tree'
       where
         (tree', _) = t_append k (Just v) cz tree
 
-delete :: forall k v. (Integral k, Show k, Show v) => k -> RbydTree k v -> RbydTree k v
+delete :: forall k v. Integral k => k -> RbydTree k v -> RbydTree k v
 delete k tree = case t_chunkSize tree of
     Nothing -> error "attempted to delete with no chunkSize"
     Just cz -> delete' cz tree
@@ -433,14 +429,14 @@ size tree = P.length $ assocs tree
 toList :: Integral k => RbydTree k v -> [(k, v)]
 toList tree = assocs tree
 
-fromList :: (Integral k, Show k, Show v) => [(k, v)] -> RbydTree k v
+fromList :: Integral k => [(k, v)] -> RbydTree k v
 fromList = foldl' (P.flip $ uncurry append) empty
 
-fromListChunky :: (Integral k, Show k, Show v) => k -> [(k, v)] -> RbydTree k v
+fromListChunky :: Integral k => k -> [(k, v)] -> RbydTree k v
 fromListChunky cz = foldl' (P.flip $ uncurry append) (emptyChunky cz)
 
 -- compact RbydTree, keeping the effective tree but resetting history
-compact :: (Integral k, Show k, Show v) => RbydTree k v -> RbydTree k v
+compact :: Integral k => RbydTree k v -> RbydTree k v
 compact tree = foldlWithKey' (\t k v -> append k v t) empty' tree
   where empty' = tree{t_history = []}
 
@@ -464,7 +460,7 @@ chunkSize tree = t_chunkSize tree
 
 
 -- debugging things
-dump :: forall k v. (Show k, Show v, Show v) => RbydTree k v -> String
+dump :: forall k v. (Show k, Show v) => RbydTree k v -> String
 dump tree
     =  "{"
     ++ intercalate ", " (reverse $ map (n_dump . snd) $ t_history tree)
