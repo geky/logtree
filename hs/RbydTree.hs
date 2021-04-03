@@ -65,6 +65,7 @@ import Prelude hiding
 import Data.Maybe
 import Data.Foldable (foldl', foldr')
 import Control.Applicative ((<|>))
+import Control.Arrow
 import Data.List (intercalate)
 import qualified Data.Map.Strict as Map
 import Debug.Trace
@@ -75,6 +76,9 @@ aligndown x alignment = x - (x `mod` alignment)
 
 alignup :: Integral n => n -> n -> n
 alignup x alignment = aligndown (x + alignment-1) alignment
+
+uncurry3 :: (a -> b -> c -> d) -> (a, b, c) -> d
+uncurry3 f (a, b, c) = f a b c
 
 infixl 3 ? 
 (?) :: Maybe a -> a -> a
@@ -107,11 +111,11 @@ follow2 (Alt _ Gt w1 _) _               (_, hi) = hi < w1
 
 cull :: (Ord k, Num k) => Alt k v -> (k, k) -> (k, k)
 cull (Alt _ Lt w _) (lo, hi)
-    | lo < w    = (lo,               hi-((lo+hi+1)-w))
-    | otherwise = (lo-w,             hi)
+    | lo < w    = (lo,       w-(lo+1))
+    | otherwise = (lo-w,     hi)
 cull (Alt _ Gt w _) (lo, hi)
-    | hi < w    = (lo-((lo+hi+1)-w), hi)
-    | otherwise = (lo,               hi-w)
+    | hi < w    = (w-(hi+1), hi)
+    | otherwise = (lo,       hi-w)
 
 cull2 :: (Ord k, Num k) => Alt k v -> Alt k v -> (k, k) -> (k, k)
 cull2 a1 a2 = cull a1 . cull a2
@@ -218,17 +222,17 @@ t_append k v delta tree = (tree', delta')
     append' :: Node k v
         -> (k, k) -> Node k v -> [Alt k v]
         -> (Node k v, k)
-    append' yin lh (alt ::: alts) nalts
-        = append' yin' lh' alts' nalts'
+    append' yin lh (alt ::: alts) nalts = append' yin' lh' alts' nalts'
       where
-        -- find new weights, alts (to chase), and build alts
-        (lh', alts', nalts') = prune (rotate yin) lh alts (alt:nalts)
+        -- find new weights, alts (to chase), and build new alts
+        (lh', alts', nalts')
+            = id ||| uncurry3 (rotate yin)
+            $ prune lh alts (alt : nalts)
         -- track incoming edge
         yin' = case nalts' of
             (Alt B _ _ _):_ -> alts'
             _               -> yin
-    append' _ lh@(lo,hi) alts@(Tag k' _) nalts
-        = (tag k v nalts', clamped_delta)
+    append' _ lh@(lo,hi) alts@(Tag k' _) nalts = (tag k v nalts', clamped_delta)
       where
         fixed_k = fix tree (adj_k-lo) k'
         clamped_delta = max adj_delta (-(hi+1))
@@ -246,17 +250,16 @@ t_append k v delta tree = (tree', delta')
 
     -- prune unfollowable edges?
     prune
-        :: (   (k, k) -> Node k v -> [Alt k v]
-               -> ((k, k), Node k v, [Alt k v])
-           )
-        -> (k, k) -> Node k v -> [Alt k v]
-        -> ((k, k), Node k v, [Alt k v])
-    prune f lh@(lo,hi) alts nalts = case nalts of
-        (Alt _ _ w1 alts'):a2@(Alt R _ w2 _):as
-            | w1+w2 >= lo+hi+1 -> f lh alts' (black a2 : as)
-        (Alt _ _ w1 alts'):as
-            | w1 >= lo+hi+1 -> (lh, alts', as)
-        as -> f lh alts  as
+        :: (k, k) -> Node k v -> [Alt k v]
+        -> Either
+            ((k, k), Node k v, [Alt k v])
+            ((k, k), Node k v, [Alt k v])
+    prune lh@(lo,hi) alts nalts = case nalts of
+        (Alt _ _ w1 alts'):a2@(Alt R _ w2 _):as | w1+w2 >= lo+hi+1
+            -> Right (lh, alts', black a2 : as)
+        (Alt _ _ w1 alts'):as | w1 >= lo+hi+1
+            -> Left  (lh, alts', as)
+        as  -> Right (lh, alts,  as)
 
     -- flip + flop + split
     rotate
