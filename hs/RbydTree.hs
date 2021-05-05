@@ -77,6 +77,10 @@ alignup x alignment = aligndown (x + alignment-1) alignment
 _uncurry3 :: (a -> b -> c -> d) -> (a, b, c) -> d
 _uncurry3 f (a, b, c) = f a b c
 
+_uneither :: Either a a -> a
+_uneither (Left  a) = a
+_uneither (Right a) = a
+
 infixl 3 ? 
 (?) :: Maybe a -> a -> a
 (?) (Just a) _ = a
@@ -220,17 +224,20 @@ t_append k v delta tree = (tree', delta')
         :: Node k v
         -> (Node k v, (k, k), [Alt k v])
         -> (Node k v, k)
-    append' yin (alt ::: alts, lh, nalts)
-        = append' yin' (alts', lh', nalts')
+    append' yedge (alt ::: alts, lh, nalts)
+        = append' yedge' (alts', lh', nalts')
       where
         -- find new weights, alts (to chase), and build new alts
         (alts', lh', nalts')
-            = (id ||| bflip) <<< rflop yin <=< prune
+            =   id ||| bflip
+            <<< id ||| Right . rflop
+            <<< ysplit yedge <=< left Left
+            <<< prune
             $ (alts, lh, alt : nalts)
         -- track incoming edge
-        yin' = case nalts' of
+        yedge' = case nalts' of
             (Alt B _ _ _):_ -> alts'
-            _               -> yin
+            _               -> yedge
     append' _ (alts@(Tag k' _), lh@(lo,hi), nalts)
         = (tag k v nalts', clamped_delta)
       where
@@ -262,37 +269,47 @@ t_append k v delta tree = (tree', delta')
         -- do nothing
         as -> Right (alts, lh, as)
 
-    -- flop + split
-    rflop
+    -- split
+    ysplit
         :: Node k v
         -> (Node k v, (k, k), [Alt k v])
         -> Either
+            (Either
+              (Node k v, (k, k), [Alt k v])
+              (Node k v, (k, k), [Alt k v]))
             (Node k v, (k, k), [Alt k v])
-            (Node k v, (k, k), [Alt k v])
-    rflop yin (alts, lh@(lo,hi), nalts) = case nalts of
+    ysplit yedge (alts, lh@(lo,hi), nalts) = case nalts of
         -- split yellow alts?
         a1@(Alt R d1 w1 alts1) : a2@(Alt R _ w2 _) : as
             -- follow split
             | follow2 a1 a2 lh
-                -> Right (alts1, cull a1f lh, black a2 : (recolor (a1f : as)))
+                -> Left $ Right (alts1, cull a1f lh, black a2 : (recolor (a1f : as)))
             -- force split
             | otherwise
-                -> Left  (alts,  cull ay  lh, recolor (ay : as))
+                -> Left $ Left  (alts,  cull ay  lh, recolor (ay : as))
           where
             a1f  = Alt B (flipd d1) ((lo+hi+1)-(w1+w2)) alts
-            ay   = Alt B d1         (w1+w2)             yin
+            ay   = Alt B d1         (w1+w2)             yedge
+        -- do nothing
+        as -> Right (alts, lh, as) 
+
+    -- flop
+    rflop
+        :: (Node k v, (k, k), [Alt k v])
+        -> (Node k v, (k, k), [Alt k v])
+    rflop (alts, lh@(lo,hi), nalts) = case nalts of
         -- flop red alts?
         a1@(Alt B d1 w1 alts1) : a2@(Alt R _ w2 _) : as
             | follow a2 lh && follow2 a1 a2 lh
-                -> Right (alts1, cull a1f lh, black a2 : red a1f : as)
+                -> (alts1, cull a1f lh, black a2 : red a1f : as)
             | follow a2 lh
-                -> Right (alts,  cull a1  lh, black a2 : red a1  : as)
+                -> (alts,  cull a1  lh, black a2 : red a1  : as)
             | otherwise
-                -> Right (alts,  cull a2  lh, a1 : a2 : as)
+                -> (alts,  cull a2  lh, a1 : a2 : as)
           where
-            a1f  = Alt B (flipd d1) ((lo+hi+1)-(w1+w2)) alts
+            a1f = Alt B (flipd d1) ((lo+hi+1)-(w1+w2)) alts
         -- do nothing
-        as -> Right (alts, lh, as)
+        as -> (alts, lh, as) 
 
     -- flip
     bflip
