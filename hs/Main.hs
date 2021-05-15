@@ -135,14 +135,58 @@ testTrees n = F.foldMap' testTree $ L.permutations [1..n]
 -- entry point
 main :: IO ()
 main = do
+    let tree = fromList [(1, "a"), (2, "b"), (3, "c")]
+    print (tree)
+    putStr (dump2 tree)
+    print (lookup 1 tree)
+    print (lookup 2 tree)
+    print (lookup 3 tree)
+    print (assocs tree)
+    putStr (trender tree)
+
+    let tree = fromList [(1, "a"), (2, "b"), (3, "c"), (4, "d")]
+    print (tree)
+    putStr (dump2 tree)
+    print (lookup 1 tree)
+    print (lookup 2 tree)
+    print (lookup 3 tree)
+    print (lookup 4 tree)
+    print (assocs tree)
+    putStr (trender tree)
+
+    let tree = fromList [(1, "a"), (2, "b"), (3, "c"), (4, "d"), (5, "e")]
+    print (tree)
+    putStr (dump2 tree)
+    print (lookup 1 tree)
+    print (lookup 2 tree)
+    print (lookup 3 tree)
+    print (lookup 4 tree)
+    print (lookup 5 tree)
+    print (assocs tree)
+    putStr (trender tree)
+
     let tree = fromList [(1, "a"), (2, "b"), (3, "c"), (4, "d"), (5, "e"), (6, "f")]
     print (tree)
+    putStr (dump2 tree)
     print (lookup 1 tree)
     print (lookup 2 tree)
     print (lookup 3 tree)
     print (lookup 4 tree)
     print (lookup 5 tree)
     print (lookup 6 tree)
+    print (assocs tree)
+    putStr (trender tree)
+
+    let tree = fromList [(1, "a"), (2, "b"), (3, "c"), (4, "d"), (5, "e"), (6, "f"), (7, "g")]
+    print (tree)
+    putStr (dump2 tree)
+    print (lookup 1 tree)
+    print (lookup 2 tree)
+    print (lookup 3 tree)
+    print (lookup 4 tree)
+    print (lookup 5 tree)
+    print (lookup 6 tree)
+    print (lookup 7 tree)
     print (assocs tree)
     putStr (trender tree)
 
