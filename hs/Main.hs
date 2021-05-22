@@ -119,7 +119,7 @@ check :: (Integral k, Eq v)
     => [(k, v)] -> RbydTree k v -> Result k v
 check kvs tree
     =  foldMap (\(k, v) -> checkLookup k (Just v) tree) kvs
-    <> checkAssocs kvs tree
+    -- <> checkAssocs kvs tree
 
 testTree :: [Int] -> Result Int Int
 testTree perm = check (L.sort [(x,x) | x <- perm]) tree
@@ -141,7 +141,7 @@ main = do
     print (lookup 1 tree)
     print (lookup 2 tree)
     print (lookup 3 tree)
-    print (assocs tree)
+    -- print (assocs tree)
     putStr (trender tree)
 
     let tree = fromList [(1, "a"), (2, "b"), (3, "c"), (4, "d")]
@@ -151,7 +151,7 @@ main = do
     print (lookup 2 tree)
     print (lookup 3 tree)
     print (lookup 4 tree)
-    print (assocs tree)
+    -- print (assocs tree)
     putStr (trender tree)
 
     let tree = fromList [(1, "a"), (2, "b"), (3, "c"), (4, "d"), (5, "e")]
@@ -162,7 +162,7 @@ main = do
     print (lookup 3 tree)
     print (lookup 4 tree)
     print (lookup 5 tree)
-    print (assocs tree)
+    -- print (assocs tree)
     putStr (trender tree)
 
     let tree = fromList [(1, "a"), (2, "b"), (3, "c"), (4, "d"), (5, "e"), (6, "f")]
@@ -174,7 +174,7 @@ main = do
     print (lookup 4 tree)
     print (lookup 5 tree)
     print (lookup 6 tree)
-    print (assocs tree)
+    -- print (assocs tree)
     putStr (trender tree)
 
     let tree = fromList [(1, "a"), (2, "b"), (3, "c"), (4, "d"), (5, "e"), (6, "f"), (7, "g")]
@@ -187,7 +187,7 @@ main = do
     print (lookup 5 tree)
     print (lookup 6 tree)
     print (lookup 7 tree)
-    print (assocs tree)
+    -- print (assocs tree)
     putStr (trender tree)
 
     -- test some random trees, don't exit on failure because
@@ -216,7 +216,6 @@ main = do
                             ++ "\nfound " ++ show (r_foundAssocs f)
                             ++ "\nexpected " ++ show (r_expectedAssocs f)
                     putStr $ trender (r_worstTree f)
-                    putStrLn $ show (r_worstTree f)
 
     -- exhaustively test trees
     forM_ [1..] $ \n -> do
@@ -243,6 +242,7 @@ main = do
                         ++ "\nexpected " ++ show (r_expectedAssocs f)
                 putStr $ trender (r_worstTree f)
                 putStrLn $ show (r_worstTree f)
+                putStr $ dump2 (r_worstTree f)
                 exitFailure
 
     putStrLn "done"
