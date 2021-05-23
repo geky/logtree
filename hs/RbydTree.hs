@@ -48,8 +48,6 @@ module RbydTree
     , weight
     , chunkSize
     , show
-    , dump
-    , dump2
     , TGrid
     , trender
     , tgrid
@@ -83,28 +81,10 @@ _uneither :: Either a a -> a
 _uneither (Left  a) = a
 _uneither (Right a) = a
 
-padL :: Int -> a -> [a] -> [a]
-padL count p l
-    | length l >= count = l
-    | otherwise         = replicate (count - length l) p ++ l
-
-padR :: Int -> a -> [a] -> [a]
-padR count p l
-    | length l >= count = l
-    | otherwise         = l ++ replicate (count - length l) p
-
 infixl 3 ? 
 (?) :: Maybe a -> a -> a
 (?) (Just a) _ = a
 (?) Nothing  b = b
-
--- infixl 9 !!?
--- (!!?) :: [a] -> Int -> Maybe a
--- (!!?) [] _ = Nothing
--- (!!?) (a:as) i
---     | i < 0     = Nothing
---     | i == 0    = Just a
---     | otherwise = as !!? (i-1)
 
 data Dir = Lt | Gt
     deriving (Show, Eq)
@@ -116,7 +96,7 @@ flipd Gt = Lt
 flipw :: Num k => (k, k) -> k -> k
 flipw (lo, hi) w = (lo+hi+1)-w 
 
-data Color = R | B | Y
+data Color = R | B
     deriving (Show, Eq)
 
 data Alt k v = Alt Color Dir k (Node k v)
@@ -127,28 +107,11 @@ follow :: Ord k => Alt k v -> (k, k) -> Bool
 follow (Alt _ Lt w _) (lo, _) = lo < w
 follow (Alt _ Gt w _) (_, hi) = hi < w
 
--- TODO hm, this is complicated
-follow' :: (Ord k, Num k) => Dir -> Alt k v -> (k, k) -> Bool
-follow' Lt (Alt _ Lt w _) (lo, _ ) = lo < w
-follow' Gt (Alt _ Gt w _) (_ , hi) = hi < w
-follow' _  (Alt _ Lt w _) (lo, hi) = lo < w && not (w >= lo+hi+1) -- hi /= (lo+hi+1)-w   -- not (hi < (lo+hi+1)-w) -- lo < w && hi /= 0 -- not (hi < (lo+hi+1)-w)
-follow' _  (Alt _ Gt w _) (lo, hi) = hi < w && not (w >= lo+hi+1) -- lo /= (lo+hi+1)-w  -- not (lo < (lo+hi+1)-w) -- hi < w && lo /= 0 -- not (lo < (lo+hi+1)-w)
-
 follow2 :: (Ord k, Num k) => Alt k v -> Alt k v -> (k, k) -> Bool
 follow2 (Alt _ Lt w1 _) (Alt _ Lt w2 _) (lo, _) = lo < w1+w2
 follow2 (Alt _ Gt w1 _) (Alt _ Gt w2 _) (_, hi) = hi < w1+w2
 follow2 (Alt _ Lt w1 _) _               (lo, _) = lo < w1
 follow2 (Alt _ Gt w1 _) _               (_, hi) = hi < w1
-
-follow2' :: (Ord k, Num k) => Dir -> Alt k v -> Alt k v -> (k, k) -> Bool
-follow2' Lt (Alt _ Lt w1 _) (Alt _ Lt w2 _) (lo, _ ) = lo < w1+w2
-follow2' Gt (Alt _ Gt w1 _) (Alt _ Gt w2 _) (_,  hi) = hi < w1+w2
-follow2' Lt (Alt _ Lt w1 _) _               (lo, _ ) = lo < w1
-follow2' Gt (Alt _ Gt w1 _) _               (_,  hi) = hi < w1
-follow2' _  (Alt _ Lt w1 _) (Alt _ Lt w2 _) (lo, hi) = lo < w1+w2 && not (w1+w2 >= lo+hi+1)
-follow2' _  (Alt _ Gt w1 _) (Alt _ Gt w2 _) (lo, hi) = hi < w1+w2 && not (w1+w2 >= lo+hi+1)
-follow2' _  (Alt _ Lt w1 _) _               (lo, hi) = lo < w1    && not (w1    >= lo+hi+1)
-follow2' _  (Alt _ Gt w1 _) _               (lo, hi) = hi < w1    && not (w1    >= lo+hi+1)
 
 flipa :: Num k => (k, k) -> Alt k v -> Alt k v
 flipa lh (Alt c d w alts) = Alt c (flipd d) (flipw lh w) alts
@@ -169,9 +132,6 @@ red =  color R
 
 black :: Alt k v -> Alt k v
 black = color B
-
-yellow :: Alt k v -> Alt k v
-yellow = color Y
 
 infixr 5 :::
 data Node k v
@@ -215,11 +175,11 @@ t_head :: RbydTree k v -> Maybe (Node k v)
 t_head RbydTree{t_history = (_, alts):_} = Just alts
 t_head RbydTree{t_history = []}          = Nothing
 
-t_partition :: Num k => RbydTree k v -> k -> (k, k)
-t_partition tree k = (k, (t_weight tree)-1 - k)
+biweight :: Num k => RbydTree k v -> k -> (k, k)
+biweight tree k = (k, (t_weight tree)-1 - k)
 
-t_fix :: Integral k => RbydTree k v -> k -> k -> k
-t_fix tree k k' = case t_chunkSize tree of
+fix :: Integral k => RbydTree k v -> k -> k -> k
+fix tree k k' = case t_chunkSize tree of
     Just cz -> (k `aligndown` cz) + (k' `mod` cz)
     Nothing -> k'
 
@@ -260,36 +220,32 @@ t_append k v delta tree = (tree', delta')
     tree' = tree{t_history = (w+delta', n') : t_history tree}
     (n', delta') = case t_head tree of
         Nothing   -> (Tag k v, adj_delta)
-        Just alts -> append' Nothing (alts, t_partition tree adj_k, [])
+        Just alts -> append' alts (alts, biweight tree adj_k, [])
 
     append'
-        :: Maybe (Node k v)
+        :: Node k v
         -> (Node k v, (k, k), [Alt k v])
         -> (Node k v, k)
-    append' redge (alt ::: alts, lh, nalts)
-        = append' redge' (alts', lh', nalts')
+    append' yedge (alt ::: alts, lh, nalts)
+        = append' yedge' (alts', lh', nalts')
       where
         -- find new weights, alts (to chase), and build new alts
         (alts', lh', nalts')
-            =   bflip
-            <<< id ||| rflop
-            <<< ysplit' redge
-            -- <<< ysplit yedge <=< left Left
-            -- <<< prune
+            =   id ||| bflip
+            <<< id ||| Right . rflop
+            <<< ysplit yedge <=< left Left
+            <<< prune
             $ (alts, lh, alt : nalts)
-        -- track last red edge
---        yedge' = case nalts' of
---            (Alt B _ _ _):_ -> alts'
---            _               -> yedge
-        redge' = case alt of
-            Alt R _ _ _ -> Just (alt ::: alts)
-            _           -> redge
-    append' redge (alts@(Tag k' _), lh@(lo,hi), nalts)
+        -- track incoming edge
+        yedge' = case nalts' of
+            (Alt B _ _ _):_ -> alts'
+            _               -> yedge
+    append' _ (alts@(Tag k' _), lh@(lo,hi), nalts)
         = (tag k v nalts', clamped_delta)
       where
-        fixed_k = t_fix tree (adj_k-lo) k'
+        fixed_k = fix tree (adj_k-lo) k'
         clamped_delta = max adj_delta (-(hi+1))
-        nalts' = bsplit' redge (alts, lh, nalts) fixed_k
+        nalts' = bsplit (alts, lh, nalts) fixed_k
 
     -- recolor nodes?
     recolor :: [Alt k v] -> [Alt k v]
@@ -300,32 +256,6 @@ t_append k v delta tree = (tree', delta')
     recolor (a1:a2:as) = black a1 : red a2 : as
     recolor (a1:[])    = black a1 : []
     recolor []         = []
-
-    recolor' :: Maybe (Node k v) -> [Alt k v] -> [Alt k v]
-    recolor' redge nalts = case nalts of
---        (a1:(Alt _ Lt w2 _):(Alt R Lt w3 _):as)
---                    -> black a1 : Alt Y Lt (w2+w3) (edge Lt redge) : as
---        (a1:(Alt _ Gt w2 _):(Alt R Gt w3 _):as)
---                    -> black a1 : Alt Y Gt (w2+w3) (edge Gt redge) : as
---
---        ((Alt _ Lt w1 _):a2:(Alt R Lt w3 _):as)
---                    -> black a2 : Alt Y Lt (w1+w3) (edge Lt redge) : as
---        ((Alt _ Gt w1 _):a2:(Alt R Gt w3 _):as)
---                    -> black a2 : Alt Y Gt (w1+w3) (edge Gt redge) : as
-
-        a1@(Alt _ d1 w1 _) : a2@(Alt _ d2 w2 _) : (Alt R d3 w3 _) : as
-            | d2 == d3 -> black a1 : Alt Y d3 (w2+w3) (edge d3 redge) : as
-            | d1 == d3 -> black a2 : Alt Y d3 (w1+w3) (edge d3 redge) : as
-
-        a1:a2:as -> black a1 : red a2 : as
-        a1:[]    -> black a1 : []
-        []       -> []
-
-    edge :: Dir -> Maybe (Node k v) -> Node k v
-    edge d1 (Just (a@(Alt R d2 _ _) ::: ns))
-        | d1 == d2  = a ::: ns
-        | otherwise = ns
-    edge _ _ = error "needed non-red alt"
 
     -- prune unfollowable edges?
     prune
@@ -366,20 +296,6 @@ t_append k v delta tree = (tree', delta')
             ay  =            Alt B d1 (w1+w2) yedge
         -- do nothing
         as -> Right (alts, lh, as) 
-
-    -- split
-    -- TODO should we process this one deeper? simplify flop checks?
-    ysplit'
-        :: Maybe (Node k v)
-        -> (Node k v, (k, k), [Alt k v])
-        -> Either
-            (Node k v, (k, k), [Alt k v])
-            (Node k v, (k, k), [Alt k v])
-    ysplit' redge (alts, lh, nalts) = case nalts of
-        -- split yellow alts?
-        a1@(Alt Y _ _ _) : as -> Left (alts, lh, recolor' redge (a1 : as))
-        -- do nothing
-        as -> Right (alts, lh, as)
 
     -- flop
     rflop
@@ -423,15 +339,6 @@ t_append k v delta tree = (tree', delta')
         | k' < adj_k                  = recolor (Alt B Lt lo        alts : as)
         | k' > adj_k                  = recolor (Alt B Gt hi        alts : as)
         | otherwise                   = as
-
-    -- split leaf node?
-    bsplit' :: Maybe (Node k v) -> (Node k v, (k, k), [Alt k v]) -> k -> [Alt k v]
-    bsplit' redge (alts, (lo,hi), as) k'
-        | adj_delta > 0 && k' < adj_k = recolor' redge (Alt B Lt (lo+hi+1) alts : as)
-        | adj_delta > 0               = recolor' redge (Alt B Gt (lo+hi+1) alts : as)
-        | k' < adj_k                  = recolor' redge (Alt B Lt lo        alts : as)
-        | k' > adj_k                  = recolor' redge (Alt B Gt hi        alts : as)
-        | otherwise                   = as
     
 append :: Integral k => k -> v -> RbydTree k v -> RbydTree k v
 append k v tree = tree'
@@ -466,15 +373,15 @@ delete k tree = case t_chunkSize tree of
 t_lookup :: forall k v. Integral k => k -> RbydTree k v -> (k, Maybe v, (k, k))
 t_lookup k tree = case t_head tree of
     Nothing   -> (k, Nothing, (0, 0))
-    Just alts -> lookup' Lt (t_partition tree k) alts
+    Just alts -> lookup' (biweight tree k) alts
   where
-    lookup' :: Dir -> (k, k) -> Node k v -> (k, Maybe v, (k, k))
-    lookup' pd lh        (alt@(Alt _ d w alts') ::: alts)
-        | follow' pd alt lh = lookup' d (cullf d w lh) alts'
-        | otherwise         = lookup' d (cull  d w lh) alts
-    lookup' _  lh@(lo,_) (Tag k' v') = (fixed_k, v', lh)
+    lookup' :: (k, k) -> Node k v -> (k, Maybe v, (k, k))
+    lookup' lh        (alt@(Alt _ d w alts') ::: alts)
+        | follow alt lh = lookup' (cullf d w lh) alts'
+        | otherwise     = lookup' (cull  d w lh) alts
+    lookup' lh@(lo,_) (Tag k' v') = (fixed_k, v', lh)
       where
-        fixed_k = t_fix tree (k-lo) k'
+        fixed_k = fix tree (k-lo) k'
 
 lookup :: Integral k => k -> RbydTree k v -> Maybe v
 lookup k tree
@@ -574,58 +481,45 @@ chunkSize tree = t_chunkSize tree
 
 
 -- debugging things
-instance (Num k, Show k, Show v) => Show (RbydTree k v) where
-    show tree = "RbydTree" ++ dump tree
-
-n_dump :: (Show k, Show v) => Node k v -> String
-n_dump n = case n of
-    (Tag _ _) -> "(" ++ tag' ++ ")"
-    _         -> "(" ++ tag' ++ "; " ++ intercalate "," alts' ++ ")"
-  where
-    tag' = n_tag t_dump n
-    alts' = n_map a_dump n
-
-t_dump :: (Show k, Show v) => k -> Maybe v -> String
-t_dump k (Just v) = show k ++ ": " ++ show v
-t_dump k Nothing  = show k ++ ": x"
-
-a_dump :: Show k => Alt k v -> String
-a_dump (Alt c d w alts) = d' ++ "w" ++ show w ++ c' ++ t' ++ "." ++ o'
-  where
-    d' = case d of {Lt -> "<"; Gt -> ">"}
-    c' = case c of {R -> "r"; B -> "b"; Y -> "y"}
-    -- not really sure how to display branches, just showing
-    -- the tag at the branch for now
-    t' = show $ n_tag (\k _ -> k) alts
-    o' = show $ n_height alts
-
-dump :: (Num k, Show k, Show v) => RbydTree k v -> String
+dump :: forall k v. (Show k, Show v) => RbydTree k v -> String
 dump tree
     =  "{"
-    ++ "w" ++ show (t_weight tree)
-    ++ "; "
-    ++ intercalate ", " (reverse [n_dump n | (_,n) <- t_history tree])
+    ++ intercalate ", " (reverse $ map (n_dump . snd) $ t_history tree)
     ++ "}"
-
-dump2 :: forall k v. (Show k, Show v) => RbydTree k v -> String
-dump2 tree = unlines [line y | y <- [h-1, h-2..0]]
   where
-    h = height tree + 1
-    line y = intercalate "  " $ reverse [n_dump2 y n | (_,n) <- t_history tree]
-
-    n_dump2 :: Int -> Node k v -> String
-    n_dump2 y n = padR 7 ' ' $ if
-        | y == 0             -> tag'
-        | y-1 < length alts' -> a_dump (alts' !! (length alts'-1 - (y-1)))
-        | otherwise          -> ""
+    n_dump :: Node k v -> String
+    n_dump n = case n of
+        (Tag _ _) -> "(" ++ tag' ++ ")"
+        _         -> "(" ++ tag' ++ "; " ++ intercalate "," alts' ++ ")"
       where
         tag' = n_tag t_dump n
-        alts' = n_map id n
+        alts' = n_map a_dump n
+
+    t_dump :: k -> Maybe v -> String
+    t_dump k (Just v) = show k ++ ": " ++ show v
+    t_dump k Nothing  = show k ++ ": x"
+
+    a_dump :: Alt k v -> String
+    a_dump (Alt c d w alts) = d' ++ "w" ++ show w ++ c' ++ t'
+      where
+        d' = case d of {Lt -> "<"; Gt -> ">"}
+        c' = case c of {R -> "r"; B -> "b"}
+        -- not really sure how to display branches, just showing
+        -- the tag at the branch for now
+        t' = show $ n_tag (\k _ -> k) alts
+
+instance (Show k, Show v) => Show (RbydTree k v) where
+    show tree = "RbydTree" ++ dump tree
 
 type TGrid = Map.Map (Int, Int) String
 
 trender :: Show k => RbydTree k v -> String
 trender tree = uncurry tungrid $ tgrid tree
+
+padL :: Int -> a -> [a] -> [a]
+padL count p l
+    | length l >= count = l
+    | otherwise         = replicate (count - length l) p ++ l
 
 tgrid :: forall k v. Show k => RbydTree k v -> ((Int, Int), TGrid)
 tgrid tree = ((w, h), grid)
@@ -639,12 +533,11 @@ tgrid tree = ((w, h), grid)
       where
         cc = case alts of
             (Alt R _ _ _):::(Alt R _ _ _):::_ -> b ++ y
-            (Alt Y _ _ _):::_                 -> r ++ r
             (Alt R _ _ _):::_                 -> b ++ r
             _                                 -> b ++ b
     n_trender (Tag k _) = [padL 2 ' ' $ take 2 $ show k]
 
-    cols = [n_trender n | (_, n) <- t_history tree]
+    cols = map (n_trender . snd) $ t_history tree
     w = length cols
     h = foldr (max . length) 0 cols
     grid = foldl' insertCol Map.empty $ zip [w-1, w-2..] cols
