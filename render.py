@@ -10,6 +10,7 @@ import itertools as it
 import sys
 
 from logtree import LogTree
+from trender import trender
 
 
 def render(tree, output):
@@ -18,11 +19,9 @@ def render(tree, output):
     heights = {}
     column_labels = {}
     node_labels = {}
-    #edge_labels = {}
     edge_colors = []
 
     for i, node in enumerate(tree.nodes):
-        #G.add_node(i)
         column_labels[i] = '%s%s: %s' % (
             'c' if node.type == 'create' else
             'd' if node.type == 'delete' else
@@ -33,23 +32,17 @@ def render(tree, output):
         for j, alt in enumerate(node.alts):
             heights[i] = max(heights.get(i, 0), j+1)
             G.add_node((i, j))
-#            if j != 0:
-#                G.add_edge((i, j-1), (i, j), color='b')
-            G.add_edge((i, j), (i, j+1), color=alt.colors[0])
-            G.add_edge((i, j), (alt.off, alt.skip), color=alt.colors[1])
+            G.add_edge((i, j), (i, j+1), color=alt.color)
+            G.add_edge((i, j), (alt.off, alt.skip), color='b')
             node_labels[(i, j)] = (
-                "%s%s%s" % (
+                "%s%s\nw%d" % (
                     "<" if alt.lt else "≥",
                     alt.key,
-                    '%+d' % alt.delta if alt.delta else ''))
+                    alt.weight))
 
         for k, v in heights.items():
             G.add_node((k, v))
-#            if v != 0:
-#                G.add_edge((k, v-1), (k, v), color='b')
             node_labels[(k, v)] = column_labels[k]
-
-   #pos = {1: (0, 0), 2: (-1, 0.3), 3: (2, 0.17), 4: (4, 0.255), 5: (5, 0.03)}
 
     #plt.tight_layout(pad=0)
     plt.figure(figsize=(10 + len(tree.nodes), 7))
@@ -67,7 +60,11 @@ def render(tree, output):
         "with_labels": False,
     }
     edges = G.edges()
-    edge_colors = ['#c44e52' if G[u][v]['color'] == 'r' else 'black' for u,v in edges]
+    edge_colors = [
+        '#c44e52' if G[u][v]['color'] == 'r' else
+        '#ffc857' if G[u][v]['color'] == 'y' else
+        'black'
+        for u,v in edges]
     nx.draw_networkx(G, pos, **options, edges=edges, edge_color=edge_colors)
     nx.draw_networkx_labels(G, pos, node_labels)
     #nx.draw_networkx_edge_labels(G, pos, edge_labels)
@@ -116,6 +113,9 @@ def main(output, *xs):
         else:
             print('unknown action %r' % action)
             sys.exit(1)
+
+    # terminal render early
+    trender(tree)
 
     render(tree, output)
 
