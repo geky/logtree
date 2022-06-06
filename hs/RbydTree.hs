@@ -98,12 +98,23 @@ infixl 3 ?
 (?) (Just a) _ = a
 (?) Nothing  b = b
 
+-- infixl 9 !!?
+-- (!!?) :: [a] -> Int -> Maybe a
+-- (!!?) [] _ = Nothing
+-- (!!?) (a:as) i
+--     | i < 0     = Nothing
+--     | i == 0    = Just a
+--     | otherwise = as !!? (i-1)
+
 data Dir = Lt | Gt
     deriving (Show, Eq)
 
 flipd :: Dir -> Dir
 flipd Lt = Gt
 flipd Gt = Lt
+
+flipw :: Num k => (k, k) -> k -> k
+flipw (lo, hi) w = (lo+hi+1)-w 
 
 data Color = R | B | Y
     deriving (Show, Eq)
@@ -116,11 +127,12 @@ follow :: Ord k => Alt k v -> (k, k) -> Bool
 follow (Alt _ Lt w _) (lo, _) = lo < w
 follow (Alt _ Gt w _) (_, hi) = hi < w
 
+-- TODO hm, this is complicated
 follow' :: (Ord k, Num k) => Dir -> Alt k v -> (k, k) -> Bool
 follow' Lt (Alt _ Lt w _) (lo, _ ) = lo < w
 follow' Gt (Alt _ Gt w _) (_ , hi) = hi < w
-follow' _  (Alt _ Lt w _) (lo, hi) = hi >= (lo+hi+1)-w
-follow' _  (Alt _ Gt w _) (lo, hi) = lo >= (lo+hi+1)-w
+follow' _  (Alt _ Lt w _) (lo, hi) = lo < w && not (w >= lo+hi+1) -- hi /= (lo+hi+1)-w   -- not (hi < (lo+hi+1)-w) -- lo < w && hi /= 0 -- not (hi < (lo+hi+1)-w)
+follow' _  (Alt _ Gt w _) (lo, hi) = hi < w && not (w >= lo+hi+1) -- lo /= (lo+hi+1)-w  -- not (lo < (lo+hi+1)-w) -- hi < w && lo /= 0 -- not (lo < (lo+hi+1)-w)
 
 follow2 :: (Ord k, Num k) => Alt k v -> Alt k v -> (k, k) -> Bool
 follow2 (Alt _ Lt w1 _) (Alt _ Lt w2 _) (lo, _) = lo < w1+w2
@@ -133,25 +145,24 @@ follow2' Lt (Alt _ Lt w1 _) (Alt _ Lt w2 _) (lo, _ ) = lo < w1+w2
 follow2' Gt (Alt _ Gt w1 _) (Alt _ Gt w2 _) (_,  hi) = hi < w1+w2
 follow2' Lt (Alt _ Lt w1 _) _               (lo, _ ) = lo < w1
 follow2' Gt (Alt _ Gt w1 _) _               (_,  hi) = hi < w1
-follow2' _  (Alt _ Lt w1 _) (Alt _ Lt w2 _) (lo, hi) = hi >= (lo+hi+1)-(w1+w2)
-follow2' _  (Alt _ Gt w1 _) (Alt _ Gt w2 _) (lo, hi) = lo >= (lo+hi+1)-(w1+w2)
-follow2' _  (Alt _ Lt w1 _) _               (lo, hi) = hi >= (lo+hi+1)-w1
-follow2' _  (Alt _ Gt w1 _) _               (lo, hi) = lo >= (lo+hi+1)-w1
+follow2' _  (Alt _ Lt w1 _) (Alt _ Lt w2 _) (lo, hi) = lo < w1+w2 && not (w1+w2 >= lo+hi+1)
+follow2' _  (Alt _ Gt w1 _) (Alt _ Gt w2 _) (lo, hi) = hi < w1+w2 && not (w1+w2 >= lo+hi+1)
+follow2' _  (Alt _ Lt w1 _) _               (lo, hi) = lo < w1    && not (w1    >= lo+hi+1)
+follow2' _  (Alt _ Gt w1 _) _               (lo, hi) = hi < w1    && not (w1    >= lo+hi+1)
 
-cull :: (Ord k, Num k) => Alt k v -> (k, k) -> (k, k)
-cull (Alt _ Lt w _) (lo, hi)
-    | lo < w    = (lo,       w-(lo+1))
-    | otherwise = (lo-w,     hi)
-cull (Alt _ Gt w _) (lo, hi)
-    | hi < w    = (w-(hi+1), hi)
-    | otherwise = (lo,       hi-w)
+flipa :: Num k => (k, k) -> Alt k v -> Alt k v
+flipa lh (Alt c d w alts) = Alt c (flipd d) (flipw lh w) alts
 
-_cull2 :: (Ord k, Num k) => Alt k v -> Alt k v -> (k, k) -> (k, k)
-_cull2 a1 a2 = cull a1 . cull a2
+cull :: Num k => Dir -> k -> (k, k) -> (k, k)
+cull Lt w (lo, hi) = (lo-w, hi)
+cull Gt w (lo, hi) = (lo, hi-w)
+
+cullf :: Num k => Dir -> k -> (k, k) -> (k, k)
+cullf d w lh = cull (flipd d) (flipw lh w) lh
 
 -- change colors
 color :: Color -> Alt k v -> Alt k v
-color c (Alt _ d k ns) = Alt c d k ns
+color c (Alt _ d k alts) = Alt c d k alts
 
 red :: Alt k v -> Alt k v
 red =  color R
@@ -204,11 +215,11 @@ t_head :: RbydTree k v -> Maybe (Node k v)
 t_head RbydTree{t_history = (_, alts):_} = Just alts
 t_head RbydTree{t_history = []}          = Nothing
 
-biweight :: Num k => RbydTree k v -> k -> (k, k)
-biweight tree k = (k, (t_weight tree)-1 - k)
+t_partition :: Num k => RbydTree k v -> k -> (k, k)
+t_partition tree k = (k, (t_weight tree)-1 - k)
 
-fix :: Integral k => RbydTree k v -> k -> k -> k
-fix tree k k' = case t_chunkSize tree of
+t_fix :: Integral k => RbydTree k v -> k -> k -> k
+t_fix tree k k' = case t_chunkSize tree of
     Just cz -> (k `aligndown` cz) + (k' `mod` cz)
     Nothing -> k'
 
@@ -249,7 +260,7 @@ t_append k v delta tree = (tree', delta')
     tree' = tree{t_history = (w+delta', n') : t_history tree}
     (n', delta') = case t_head tree of
         Nothing   -> (Tag k v, adj_delta)
-        Just alts -> append' Nothing (alts, biweight tree adj_k, [])
+        Just alts -> append' Nothing (alts, t_partition tree adj_k, [])
 
     append'
         :: Maybe (Node k v)
@@ -276,7 +287,7 @@ t_append k v delta tree = (tree', delta')
     append' redge (alts@(Tag k' _), lh@(lo,hi), nalts)
         = (tag k v nalts', clamped_delta)
       where
-        fixed_k = fix tree (adj_k-lo) k'
+        fixed_k = t_fix tree (adj_k-lo) k'
         clamped_delta = max adj_delta (-(hi+1))
         nalts' = bsplit' redge (alts, lh, nalts) fixed_k
 
@@ -339,18 +350,20 @@ t_append k v delta tree = (tree', delta')
               (Node k v, (k, k), [Alt k v])
               (Node k v, (k, k), [Alt k v]))
             (Node k v, (k, k), [Alt k v])
-    ysplit yedge (alts, lh@(lo,hi), nalts) = case nalts of
+    ysplit yedge (alts, lh, nalts) = case nalts of
         -- split yellow alts?
         a1@(Alt R d1 w1 alts1) : a2@(Alt R _ w2 _) : as
             -- follow split
             | follow2 a1 a2 lh
-                -> Left $ Right (alts1, cull a1f lh, black a2 : (recolor (a1f : as)))
+                -> Left . Right
+                $  (alts1, cullf d1 (w1+w2) lh, black a2 : (recolor (a1f : as)))
             -- force split
             | otherwise
-                -> Left $ Left  (alts,  cull ay  lh, recolor (ay : as))
+                -> Left . Left
+                $  (alts,  cull  d1 (w1+w2) lh, recolor (ay : as))
           where
-            a1f  = Alt B (flipd d1) ((lo+hi+1)-(w1+w2)) alts
-            ay   = Alt B d1         (w1+w2)             yedge
+            a1f = flipa lh $ Alt B d1 (w1+w2) alts
+            ay  =            Alt B d1 (w1+w2) yedge
         -- do nothing
         as -> Right (alts, lh, as) 
 
@@ -372,17 +385,17 @@ t_append k v delta tree = (tree', delta')
     rflop
         :: (Node k v, (k, k), [Alt k v])
         -> (Node k v, (k, k), [Alt k v])
-    rflop (alts, lh@(lo,hi), nalts) = case nalts of
+    rflop (alts, lh, nalts) = case nalts of
         -- flop red alts?
-        a1@(Alt B d1 w1 alts1) : a2@(Alt R _ w2 _) : as
+        a1@(Alt B d1 w1 alts1) : a2@(Alt R d2 w2 _) : as
             | follow a2 lh && follow2 a1 a2 lh
-                -> (alts1, cull a1f lh, black a2 : red a1f : as)
+                -> (alts1, cullf d1 (w1+w2) lh, black a2 : red a1f : as)
             | follow a2 lh
-                -> (alts,  cull a1  lh, black a2 : red a1  : as)
+                -> (alts,  cull  d1 w1      lh, black a2 : red a1  : as)
             | otherwise
-                -> (alts,  cull a2  lh, a1 : a2 : as)
+                -> (alts,  cull  d2 w2      lh, a1 : a2 : as)
           where
-            a1f = Alt B (flipd d1) ((lo+hi+1)-(w1+w2)) alts
+            a1f = flipa lh $ Alt B d1 (w1+w2) alts
         -- do nothing
         as -> (alts, lh, as) 
 
@@ -390,15 +403,15 @@ t_append k v delta tree = (tree', delta')
     bflip
         :: (Node k v, (k, k), [Alt k v])
         -> (Node k v, (k, k), [Alt k v])
-    bflip (alts, lh@(lo,hi), nalts) = case nalts of
+    bflip (alts, lh, nalts) = case nalts of
         -- flip black alts?
         a1@(Alt B d1 w1 alts1) : as
             | follow a1 lh
-                -> (alts1, cull a1f lh, a1f : as)
+                -> (alts1, cullf d1 w1 lh, a1f : as)
             | otherwise
-                -> (alts,  cull a1  lh, a1  : as)
+                -> (alts,  cull  d1 w1 lh, a1  : as)
           where
-            a1f  = Alt B (flipd d1) ((lo+hi+1)-w1) alts
+            a1f = flipa lh $ Alt B d1 w1 alts
         -- do nothing
         as -> (alts, lh, as)
 
@@ -453,15 +466,15 @@ delete k tree = case t_chunkSize tree of
 t_lookup :: forall k v. Integral k => k -> RbydTree k v -> (k, Maybe v, (k, k))
 t_lookup k tree = case t_head tree of
     Nothing   -> (k, Nothing, (0, 0))
-    Just alts -> lookup' Lt (biweight tree k) alts
+    Just alts -> lookup' Lt (t_partition tree k) alts
   where
     lookup' :: Dir -> (k, k) -> Node k v -> (k, Maybe v, (k, k))
-    lookup' pd lh        (alt@(Alt _ d _ alts') ::: alts)
-        | follow' pd alt lh = lookup' d (cull alt lh) alts'
-        | otherwise         = lookup' d (cull alt lh) alts
+    lookup' pd lh        (alt@(Alt _ d w alts') ::: alts)
+        | follow' pd alt lh = lookup' d (cullf d w lh) alts'
+        | otherwise         = lookup' d (cull  d w lh) alts
     lookup' _  lh@(lo,_) (Tag k' v') = (fixed_k, v', lh)
       where
-        fixed_k = fix tree (k-lo) k'
+        fixed_k = t_fix tree (k-lo) k'
 
 lookup :: Integral k => k -> RbydTree k v -> Maybe v
 lookup k tree
@@ -561,7 +574,7 @@ chunkSize tree = t_chunkSize tree
 
 
 -- debugging things
-instance (Show k, Show v) => Show (RbydTree k v) where
+instance (Num k, Show k, Show v) => Show (RbydTree k v) where
     show tree = "RbydTree" ++ dump tree
 
 n_dump :: (Show k, Show v) => Node k v -> String
@@ -586,9 +599,11 @@ a_dump (Alt c d w alts) = d' ++ "w" ++ show w ++ c' ++ t' ++ "." ++ o'
     t' = show $ n_tag (\k _ -> k) alts
     o' = show $ n_height alts
 
-dump :: (Show k, Show v) => RbydTree k v -> String
+dump :: (Num k, Show k, Show v) => RbydTree k v -> String
 dump tree
     =  "{"
+    ++ "w" ++ show (t_weight tree)
+    ++ "; "
     ++ intercalate ", " (reverse [n_dump n | (_,n) <- t_history tree])
     ++ "}"
 
@@ -599,12 +614,11 @@ dump2 tree = unlines [line y | y <- [h-1, h-2..0]]
     line y = intercalate "  " $ reverse [n_dump2 y n | (_,n) <- t_history tree]
 
     n_dump2 :: Int -> Node k v -> String
-    n_dump2 y n = padR w ' ' $ if
+    n_dump2 y n = padR 7 ' ' $ if
         | y == 0             -> tag'
         | y-1 < length alts' -> a_dump (alts' !! (length alts'-1 - (y-1)))
         | otherwise          -> ""
       where
-        w = length tag' + 1
         tag' = n_tag t_dump n
         alts' = n_map id n
 
