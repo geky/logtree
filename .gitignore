@@ -1,2 +1,4 @@
 *.csv
+*.hi
+*.o
 __pycache__

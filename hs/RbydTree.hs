@@ -175,11 +175,11 @@ t_head :: RbydTree k v -> Maybe (Node k v)
 t_head RbydTree{t_history = (_, alts):_} = Just alts
 t_head RbydTree{t_history = []}          = Nothing
 
-biweight :: Num k => RbydTree k v -> k -> (k, k)
-biweight tree k = (k, (t_weight tree)-1 - k)
+t_partition :: Num k => RbydTree k v -> k -> (k, k)
+t_partition tree k = (k, (t_weight tree)-1 - k)
 
-fix :: Integral k => RbydTree k v -> k -> k -> k
-fix tree k k' = case t_chunkSize tree of
+t_fix :: Integral k => RbydTree k v -> k -> k -> k
+t_fix tree k k' = case t_chunkSize tree of
     Just cz -> (k `aligndown` cz) + (k' `mod` cz)
     Nothing -> k'
 
@@ -220,7 +220,7 @@ t_append k v delta tree = (tree', delta')
     tree' = tree{t_history = (w+delta', n') : t_history tree}
     (n', delta') = case t_head tree of
         Nothing   -> (Tag k v, adj_delta)
-        Just alts -> append' alts (alts, biweight tree adj_k, [])
+        Just alts -> append' alts (alts, t_partition tree adj_k, [])
 
     append'
         :: Node k v
@@ -232,9 +232,9 @@ t_append k v delta tree = (tree', delta')
         -- find new weights, alts (to chase), and build new alts
         (alts', lh', nalts')
             =   id ||| bflip
-            <<< id ||| Right . rflop
-            <<< ysplit yedge <=< left Left
-            <<< prune
+            <<< right (rflop ||| rflop)
+            <<< ysplit yedge
+            <=< prune
             $ (alts, lh, alt : nalts)
         -- track incoming edge
         yedge' = case nalts' of
@@ -243,7 +243,7 @@ t_append k v delta tree = (tree', delta')
     append' _ (alts@(Tag k' _), lh@(lo,hi), nalts)
         = (tag k v nalts', clamped_delta)
       where
-        fixed_k = fix tree (adj_k-lo) k'
+        fixed_k = t_fix tree (adj_k-lo) k'
         clamped_delta = max adj_delta (-(hi+1))
         nalts' = bsplit (alts, lh, nalts) fixed_k
 
@@ -276,26 +276,24 @@ t_append k v delta tree = (tree', delta')
         :: Node k v
         -> (Node k v, (k, k), [Alt k v])
         -> Either
+            (Node k v, (k, k), [Alt k v])
             (Either
               (Node k v, (k, k), [Alt k v])
               (Node k v, (k, k), [Alt k v]))
-            (Node k v, (k, k), [Alt k v])
     ysplit yedge (alts, lh, nalts) = case nalts of
         -- split yellow alts?
         a1@(Alt R d1 w1 alts1) : a2@(Alt R _ w2 _) : as
             -- follow split
-            | follow2 a1 a2 lh
-                -> Left . Right
-                $  (alts1, cullf d1 (w1+w2) lh, black a2 : (recolor (a1f : as)))
+            | follow2 a1 a2 lh -> Right $ Left
+                (alts1, cullf d1 (w1+w2) lh, black a2 : recolor (a1f : as))
             -- force split
-            | otherwise
-                -> Left . Left
-                $  (alts,  cull  d1 (w1+w2) lh, recolor (ay : as))
+            | otherwise        -> Left
+                (alts,  cull  d1 (w1+w2) lh, recolor (ay : as))
           where
             a1f = flipa lh $ Alt B d1 (w1+w2) alts
             ay  =            Alt B d1 (w1+w2) yedge
         -- do nothing
-        as -> Right (alts, lh, as) 
+        as -> Right $ Right (alts, lh, as) 
 
     -- flop
     rflop
@@ -373,7 +371,7 @@ delete k tree = case t_chunkSize tree of
 t_lookup :: forall k v. Integral k => k -> RbydTree k v -> (k, Maybe v, (k, k))
 t_lookup k tree = case t_head tree of
     Nothing   -> (k, Nothing, (0, 0))
-    Just alts -> lookup' (biweight tree k) alts
+    Just alts -> lookup' (t_partition tree k) alts
   where
     lookup' :: (k, k) -> Node k v -> (k, Maybe v, (k, k))
     lookup' lh        (alt@(Alt _ d w alts') ::: alts)
@@ -381,7 +379,7 @@ t_lookup k tree = case t_head tree of
         | otherwise     = lookup' (cull  d w lh) alts
     lookup' lh@(lo,_) (Tag k' v') = (fixed_k, v', lh)
       where
-        fixed_k = fix tree (k-lo) k'
+        fixed_k = t_fix tree (k-lo) k'
 
 lookup :: Integral k => k -> RbydTree k v -> Maybe v
 lookup k tree
